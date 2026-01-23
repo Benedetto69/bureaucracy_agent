@@ -1,0 +1,34 @@
+[
+  {
+    "id": "r1",
+    "source": "norma",
+    "citation": "art. 3, comma 1, Codice della Strada",
+    "url": "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:codice.strada:2024-01-01;art=3",
+    "keywords": ["art. 3", "codice della strada", "notifica"],
+    "content": "Ogni violazione deve essere notificata correttamente e riportare importo, articolo e data."
+  },
+  {
+    "id": "r2",
+    "source": "giurisprudenza",
+    "citation": "Cass. civ. n. 11085/2025",
+    "url": "https://www.giustizia.it/rif/11085-2025",
+    "keywords": ["corte di cassazione", "termine", "sospensione"],
+    "content": "La Cassazione ha annullato multe notificate oltre 30 giorni quando i termini non sono stati rispettati."
+  },
+  {
+    "id": "r3",
+    "source": "policy",
+    "citation": "Linee guida interne 2026",
+    "url": "https://intranet.agenzia.it/linee-guida-vizi",
+    "keywords": ["procedura interna", "linee guida", "formale"],
+    "content": "Segui sempre la procedura interna per richiedere l'accesso agli atti e documentare il caso."
+  },
+  {
+    "id": "r4",
+    "source": "norma",
+    "citation": "art. 7, comma 2, Codice della Strada",
+    "url": "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:codice.strada:2024-01-01;art=7",
+    "keywords": ["art. 7", "documentazione", "richiesta"],
+    "content": "La documentazione corretta deve accompagnare ogni richiesta di riesame della sanzione."
+  }
+]

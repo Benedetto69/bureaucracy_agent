@@ -1,0 +1,28 @@
+name: bureaucracy_agent
+description: "AI Agent per la risoluzione di problemi burocratici."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  http: ^1.1.0                # Fondamentale per parlare col server
+  flutter_dotenv: ^5.1.0      # Per nascondere le tue chiavi API
+  encrypt: ^5.0.3             # Per criptare i dati sensibili
+  uuid: ^4.5.2
+  image_picker: ^0.8.7+5
+  shared_preferences: ^2.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env                    # Indica a Flutter di includere i tuoi segreti

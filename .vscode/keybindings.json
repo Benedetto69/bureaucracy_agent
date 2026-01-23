@@ -1,0 +1,8 @@
+[
+  {
+    "key": "ctrl+alt+a",
+    "command": "workbench.action.tasks.runTask",
+    "args": "Analyza progetto",
+    "when": "editorTextFocus"
+  }
+]

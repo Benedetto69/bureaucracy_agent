@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Pre-commit hook per assicurare il pannello "Problemi" pulito.
+HOOK_NAME="pre-commit"
+GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+
+if [[ -z "$GIT_ROOT" ]]; then
+  echo "Impossibile determinare il repository git. Esegui lo script dalla radice del repo."
+  exit 1
+fi
+
+HOOK_DIR="$GIT_ROOT/.git/hooks"
+HOOK_FILE="$HOOK_DIR/$HOOK_NAME"
+ANALYZE_SCRIPT="$(cd "$(dirname "$0")/.." && pwd)/analyze.sh"
+
+if [[ ! -d "$HOOK_DIR" ]]; then
+  echo "Directory hooks non trovata in $HOOK_DIR"
+  exit 1
+fi
+
+if [[ ! -x "$ANALYZE_SCRIPT" ]]; then
+  echo "Rendo eseguibile lo script di analisi in $ANALYZE_SCRIPT"
+  chmod +x "$ANALYZE_SCRIPT"
+fi
+
+if [[ ! -f "$HOOK_FILE" ]]; then
+  cat <<EOF >"$HOOK_FILE"
+#!/usr/bin/env bash
+"$ANALYZE_SCRIPT"
+EOF
+  chmod +x "$HOOK_FILE"
+  echo "Pre-commit hook installato in $HOOK_FILE (chiama $ANALYZE_SCRIPT)"
+else
+  echo "Hook già presente in $HOOK_FILE: aggiornalo manualmente se serve."
+fi
