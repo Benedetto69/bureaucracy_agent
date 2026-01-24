@@ -1,7 +1,7 @@
 name: bureaucracy_agent
 description: "AI Agent per la risoluzione di problemi burocratici."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+4
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -13,6 +13,7 @@ dependencies:
   http: ^1.1.0                # Fondamentale per parlare col server
   flutter_dotenv: ^5.1.0      # Per nascondere le tue chiavi API
   encrypt: ^5.0.3             # Per criptare i dati sensibili
+  in_app_purchase: ^3.2.0     # StoreKit/Google Play Billing
   uuid: ^4.5.2
   image_picker: ^0.8.7+5
   shared_preferences: ^2.2.0

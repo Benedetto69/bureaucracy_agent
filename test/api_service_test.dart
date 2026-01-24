@@ -4,7 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-import 'package:bureaucracy_agent/services/api_service.dart';
+import '../lib/services/api_service.dart';
+import '../lib/services/document_analyzer_models.dart';
 
 void main() {
   group('DocumentAnalyzerApi', () {

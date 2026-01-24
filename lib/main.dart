@@ -1,16 +1,21 @@
+import 'dart:async';
 import 'dart:io';
 
-import 'package:bureaucracy_agent/models/document_history.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:bureaucracy_agent/screens/entry_page.dart';
-import 'package:bureaucracy_agent/services/api_service.dart';
-import 'package:bureaucracy_agent/theme/app_theme.dart';
-import 'package:bureaucracy_agent/services/history_storage.dart';
-import 'package:bureaucracy_agent/services/subscription_service.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'models/document_history.dart';
+import 'screens/entry_page.dart';
+import 'screens/privacy_page.dart';
+import 'services/api_service.dart';
+import 'services/document_analyzer_models.dart';
+import 'services/history_storage.dart';
+import 'services/ocr_service.dart';
+import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
@@ -29,6 +34,7 @@ class BureaucracyAgentApp extends StatelessWidget {
       home: const EntryPage(),
       routes: {
         '/analyzer': (_) => const SchermataRisoluzione(),
+        '/privacy': (_) => const PrivacyPage(),
       },
     );
   }
@@ -65,20 +71,78 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   final ImagePicker _picker = ImagePicker();
   final List<DocumentHistoryEntry> _documentHistory = [];
   DocumentHistoryStorage? _historyStorage;
-  SubscriptionService? _subscriptionService;
-  SubscriptionStatus? _subscriptionStatus;
-  bool _pushAlertsEnabled = true;
-  bool _emailAlertsEnabled = false;
+  final InAppPurchase _iap = InAppPurchase.instance;
+  StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
+  bool _storeAvailable = false;
+  bool _isPremium = false;
+  bool _isPurchasing = false;
+  String? _storeError;
+  List<ProductDetails> _products = [];
+  static const int _freeDailyLimit = 3;
+  static const String _analysisCountKey = 'analysis_count';
+  static const String _analysisCountDateKey = 'analysis_count_date';
+  int _analysisCountToday = 0;
+  String _analysisCountDate = '';
+  static const _panelGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFF121925),
+      Color(0xFF090C12),
+    ],
+  );
+  static const _panelBorderColor = Color(0xFF1C2336);
+  static const _panelAccent = Color(0xFF51FFBD);
+  static final List<AnalysisIssue> _offlineIssuesDemo = [
+    AnalysisIssue(
+      type: IssueType.substance,
+      issue: 'Le clausole della contestazione sembrano applicare interessi non previsti dal tariffario.',
+      confidence: 0.86,
+      references: [
+        Reference(
+          source: ReferenceSource.norma,
+          citation: 'Art. 3 Decreto 2025',
+          url: Uri.parse('https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.2025'),
+        ),
+      ],
+      actions: [
+        'Segnala la discrepanza al team di supporto per revisione',
+        'Prepara richiesta formale di rettifica entro 5 giorni',
+      ],
+    ),
+    AnalysisIssue(
+      type: IssueType.formality,
+      issue: 'Manca il timbro del protocollo sul secondo foglio, necessario per la conformità.',
+      confidence: 0.72,
+      references: [
+        Reference(
+          source: ReferenceSource.policy,
+          citation: 'Linee guida interne 2.1.4',
+          url: Uri.parse('https://intranet.bureaucracy/labs/guidelines-2.1.4'),
+        ),
+      ],
+      actions: [
+        'Chiedere conferma dell’ufficio emittente e allegare prova fotografica',
+        'Rifirmare il documento con timestamp aggiornato',
+      ],
+    ),
+  ];
+  static final Summary _offlineSummaryDemo = Summary(
+    riskLevel: RiskLevel.medium,
+    nextStep: 'Simulazione offline: pulisci i formati, allega la documentazione e invia per revisione manuale.',
+  );
 
   @override
   void initState() {
     super.initState();
     _initializeHistory();
-    _initializeSubscription();
+    _initializeStore();
+    _initializeUsageLimits();
   }
 
   @override
   void dispose() {
+    _purchaseSub?.cancel();
     _descriptionController.dispose();
     _userIdController.dispose();
     _jurisdictionController.dispose();
@@ -102,17 +166,87 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     }
   }
 
-  Future<void> _initializeSubscription() async {
+  Future<void> _initializeUsageLimits() async {
     try {
-      final service = await SubscriptionService.create();
-      final status = service.loadStatus();
+      final prefs = await SharedPreferences.getInstance();
+      final todayKey = _formatDay(DateTime.now());
+      final storedDate = prefs.getString(_analysisCountDateKey);
+      final storedCount = prefs.getInt(_analysisCountKey) ?? 0;
+      final count = storedDate == todayKey ? storedCount : 0;
+      if (storedDate != todayKey) {
+        await prefs.setString(_analysisCountDateKey, todayKey);
+        await prefs.setInt(_analysisCountKey, 0);
+      }
       if (!mounted) return;
       setState(() {
-        _subscriptionService = service;
-        _subscriptionStatus = status;
+        _analysisCountDate = todayKey;
+        _analysisCountToday = count;
       });
     } catch (error) {
-      debugPrint('Impossibile inizializzare l’abbonamento: $error');
+      debugPrint('Impossibile inizializzare limite giornaliero: $error');
+    }
+  }
+
+  String _formatDay(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  static const Set<String> _productIds = {
+    'com.benedettoriba.bureaucracy.premium.monthly',
+    'com.benedettoriba.bureaucracy.premium.annual',
+  };
+
+  Future<void> _initializeStore() async {
+    try {
+      final available = await _iap.isAvailable();
+      if (!mounted) return;
+      setState(() => _storeAvailable = available);
+      if (!available) return;
+
+      final response = await _iap.queryProductDetails(_productIds);
+      if (!mounted) return;
+      setState(() {
+        _products = response.productDetails;
+        _storeError = response.error?.message;
+      });
+
+      _purchaseSub = _iap.purchaseStream.listen(
+        _handlePurchaseUpdates,
+        onError: (error) {
+          if (!mounted) return;
+          setState(() => _storeError = 'Errore store: $error');
+        },
+      );
+      await _iap.restorePurchases();
+    } catch (error) {
+      debugPrint('Impossibile inizializzare lo store: $error');
+      if (!mounted) return;
+      setState(() => _storeError = 'Store non disponibile: $error');
+    }
+  }
+
+  Future<void> _recordAnalysisUsage() async {
+    if (_isPremium) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final todayKey = _formatDay(DateTime.now());
+      var count = _analysisCountToday;
+      if (_analysisCountDate != todayKey) {
+        count = 0;
+      }
+      count += 1;
+      await prefs.setString(_analysisCountDateKey, todayKey);
+      await prefs.setInt(_analysisCountKey, count);
+      if (!mounted) return;
+      setState(() {
+        _analysisCountDate = todayKey;
+        _analysisCountToday = count;
+      });
+    } catch (error) {
+      debugPrint('Impossibile salvare limite giornaliero: $error');
     }
   }
 
@@ -129,12 +263,29 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
       return;
     }
 
+    final todayKey = _formatDay(DateTime.now());
+    if (_analysisCountDate != todayKey) {
+      setState(() {
+        _analysisCountDate = todayKey;
+        _analysisCountToday = 0;
+      });
+    }
+
+    if (!_isPremium && _analysisCountToday >= _freeDailyLimit) {
+      setState(() {
+        _errorMessage =
+            'Limite giornaliero gratuito raggiunto. Passa a Premium per analisi illimitate.';
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
       _esitoIA = "L'algoritmo sta interrogando il cervello...";
     });
 
+    var analysisSucceeded = false;
     final payload = AnalyzePayload(
       documentId: DateTime.now().millisecondsSinceEpoch.toString(),
       source: SourceType.ocr,
@@ -143,10 +294,6 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
         issueDate: _issueDate,
         amount: amount,
         jurisdiction: _jurisdictionController.text.trim(),
-      ),
-      alertPreferences: AlertPreferences(
-        pushNotifications: _pushAlertsEnabled,
-        emailSummaries: _emailAlertsEnabled,
       ),
       text: description,
     );
@@ -163,6 +310,10 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
         _esitoIA = response.summary.nextStep;
         _lastPayloadId = payload.documentId;
       });
+      analysisSucceeded = true;
+    } on SocketException catch (_) {
+      _applyOfflineFallback(payload.documentId);
+      analysisSucceeded = true;
     } on ApiException catch (error) {
       setState(() {
         _errorMessage =
@@ -176,7 +327,24 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
       });
     } finally {
       setState(() => _isLoading = false);
+      if (analysisSucceeded) {
+        await _recordAnalysisUsage();
+      }
     }
+  }
+
+  void _applyOfflineFallback(String documentId) {
+    setState(() {
+      _errorMessage =
+          'Nessuna connessione col cervello: usiamo una simulazione offline.';
+      _issues = [..._offlineIssuesDemo];
+      _summary = _offlineSummaryDemo;
+      _serverTime = DateTime.now()
+          .toLocal()
+          .toIso8601String()
+          .replaceFirst('T', ' ');
+      _lastPayloadId = documentId;
+    });
   }
 
   Future<void> _pickDocument(ImageSource source) async {
@@ -194,6 +362,8 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
         _ocrText = extracted;
         if (extracted.isNotEmpty) {
           _descriptionController.text = extracted;
+        } else {
+          _errorMessage = "Nessun testo rilevato nell'immagine.";
         }
       });
     } catch (error) {
@@ -204,9 +374,25 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   }
 
   Future<String> _runTextRecognition(XFile file) async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    final fileName = file.name;
-    return 'Simulazione OCR per $fileName: rilevati importo e termine.';
+    try {
+      // Real OCR on iOS via Vision; other platforms may throw MissingPluginException.
+      final extracted = await OcrService.recognizeText(file.path);
+      return extracted;
+    } on MissingPluginException {
+      // Non-iOS builds (or misconfigured iOS runner) will end up here.
+      return '';
+    } catch (error) {
+      // Let caller surface a readable error banner.
+      throw Exception('OCR non disponibile: $error');
+    }
+  }
+
+  String _prepareOcrDisplayText(String text) {
+    const breaker = '\u200B';
+    return text.replaceAllMapped(
+      RegExp(r'([_/\\\-.])'),
+      (match) => '${match.group(0)}$breaker',
+    );
   }
 
   Future<void> _scegliData() async {
@@ -249,19 +435,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _sectionTitle('Descrizione del caso'),
-                const SizedBox(height: 8),
-                _buildDescriptionField(),
-                const SizedBox(height: 24),
-                _sectionTitle('Metadata minimali'),
-                const SizedBox(height: 8),
-                _buildMetadataInputs(),
-                const SizedBox(height: 18),
-                _buildDateRow(),
-                const SizedBox(height: 24),
-                _buildDocumentScanner(),
-                const SizedBox(height: 28),
-                Center(child: _buildAnalyzeButton()),
+                _buildCaseInputPanel(),
                 if (_errorMessage != null) ...[
                   const SizedBox(height: 20),
                   _buildErrorBanner(),
@@ -272,8 +446,6 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
                 _buildRiskStats(),
                 const SizedBox(height: 18),
                 _buildPremiumPerksCard(),
-                const SizedBox(height: 16),
-                _buildAlertSettings(),
                 const SizedBox(height: 16),
                 _buildPremiumCta(),
                 const SizedBox(height: 18),
@@ -358,70 +530,195 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     );
   }
 
+  Widget _buildCaseInputPanel() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 26),
+      decoration: BoxDecoration(
+        gradient: _panelGradient,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: _panelBorderColor),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x66000000),
+            blurRadius: 18,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 32,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF51FFBD),
+                      Color(0xFF8CFFE1),
+                    ],
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Descrizione del caso',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Più dettagli ci dai, più veloce diventa la strategia.',
+                      style: TextStyle(
+                        color: Colors.white60,
+                        fontSize: 13,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _buildDescriptionField(),
+          const SizedBox(height: 22),
+          const Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Metadata minimali',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+              Text(
+                'Clienti verificati',
+                style: TextStyle(color: _panelAccent, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildMetadataInputs(),
+          const SizedBox(height: 18),
+          const Divider(color: Color(0xFF1C2336), height: 0),
+          const SizedBox(height: 16),
+          _buildDateRow(),
+          const SizedBox(height: 18),
+          _buildDocumentScanner(),
+          const SizedBox(height: 26),
+          _buildAnalyzeButton(),
+          if (!_isPremium) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Piano gratuito: $_analysisCountToday/$_freeDailyLimit analisi usate oggi.',
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildDescriptionField() {
     return TextField(
       controller: _descriptionController,
       maxLines: 5,
-      decoration: InputDecoration(
-        filled: true,
-        fillColor: const Color(0xFF121519),
-        hintText:
-            'Racconta testo della multa, clausole sospette o ritardi nella notifica.',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
+      style: const TextStyle(color: Colors.white),
+      decoration: _glassDecoration(
+        'Racconta testo, clausole sospette o ritardi',
+        hint:
+            'Più contesto ci dai, più intelligente sarà il prossimo step operativo.',
+        icon: Icons.speaker_notes_outlined,
+        alignLabel: true,
       ),
+    );
+  }
+
+  InputDecoration _glassDecoration(
+    String label, {
+    String? hint,
+    IconData? icon,
+    bool alignLabel = false,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      floatingLabelBehavior:
+          alignLabel ? FloatingLabelBehavior.never : FloatingLabelBehavior.always,
+      hintText: hint,
+      hintStyle: const TextStyle(color: Colors.white54),
+      labelStyle: const TextStyle(color: Colors.white70, fontSize: 13),
+      filled: true,
+      fillColor: const Color(0xFF0C131D),
+      prefixIcon: icon == null
+          ? null
+          : Icon(
+              icon,
+              color: Colors.white38,
+            ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide.none,
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    );
+  }
+
+  Widget _buildGlassField({
+    required String label,
+    required TextEditingController controller,
+    IconData? icon,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      style: const TextStyle(color: Colors.white),
+      decoration: _glassDecoration(label, icon: icon),
     );
   }
 
   Widget _buildMetadataInputs() {
     return Column(
       children: [
-        TextField(
+        _buildGlassField(
+          label: 'Client ID',
           controller: _userIdController,
-          decoration: InputDecoration(
-            labelText: 'Client ID',
-            filled: true,
-            fillColor: const Color(0xFF121519),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-          ),
+          icon: Icons.badge_outlined,
         ),
         const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
-              child: TextField(
+              child: _buildGlassField(
+                label: 'Giurisdizione',
                 controller: _jurisdictionController,
-                decoration: InputDecoration(
-                  labelText: 'Giurisdizione',
-                  filled: true,
-                  fillColor: const Color(0xFF121519),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
+                icon: Icons.location_city,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: TextField(
+              child: _buildGlassField(
+                label: 'Importo contestato',
                 controller: _amountController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  labelText: 'Importo contestato',
-                  filled: true,
-                  fillColor: const Color(0xFF121519),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                icon: Icons.savings_outlined,
               ),
             ),
           ],
@@ -433,49 +730,234 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   Widget _buildDateRow() {
     return Row(
       children: [
-        Expanded(
+        const Expanded(
           child: Text(
             'Data di notifica',
-            style: TextStyle(color: Colors.grey[400]),
+            style: TextStyle(
+              color: Colors.white60,
+              fontSize: 13,
+            ),
           ),
         ),
-        TextButton(
+        OutlinedButton(
           onPressed: _scegliData,
-          style: TextButton.styleFrom(
-            foregroundColor: Colors.greenAccent,
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Color(0xFF1C2336)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            foregroundColor: Colors.white,
           ),
-          child: Text(
-            _issueDate.toIso8601String().split('T').first,
-            style: const TextStyle(fontWeight: FontWeight.bold),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.calendar_month_outlined, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                _issueDate.toIso8601String().split('T').first,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildAnalyzeButton() {
-    return ElevatedButton(
-      onPressed: _isLoading ? null : _avviaAnalisi,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.greenAccent,
-        foregroundColor: Colors.black,
-        elevation: 6,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+  Widget _buildDocumentScanner() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B121F),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white10),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF111928),
+            Color(0xFF05080E),
+          ],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
-      child: _isLoading
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.document_scanner_outlined, color: Colors.white70),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Scannerizza o carica un documento',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-            )
-          : const Text(
-              'AVVIA ANALISI DEL CERVELLO',
-              style: TextStyle(letterSpacing: 1),
+              if (_isProcessingImage)
+                const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                flex: 5,
+                child: ElevatedButton.icon(
+                  onPressed: () => _pickDocument(ImageSource.camera),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFA165FF),
+                    foregroundColor: Colors.white,
+                    elevation: 6,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    minimumSize: const Size(0, 56),
+                  ),
+                  icon: const Icon(Icons.camera_alt_outlined, size: 20),
+                  label: const Text(
+                    'Fotografa',
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      letterSpacing: 0.15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 4,
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickDocument(ImageSource.gallery),
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: Colors.white70,
+                    elevation: 0,
+                    side: const BorderSide(color: Color(0xFF2E3648)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    minimumSize: const Size(0, 56),
+                  ),
+                  icon: const Icon(Icons.photo_library, size: 20),
+                  label: const Text(
+                    'Carica galleria',
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      letterSpacing: 0.1,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_pickedImage != null) ...[
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.file(
+                _pickedImage!,
+                width: double.infinity,
+                height: 160,
+                fit: BoxFit.cover,
+              ),
             ),
+          ],
+          if (_isProcessingImage) ...[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(),
+          ],
+          if (_ocrText != null && _ocrText!.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Text('Testo estratto', style: TextStyle(color: Colors.white70, fontSize: 13)),
+            const SizedBox(height: 4),
+            Text(
+              _prepareOcrDisplayText(_ocrText!),
+              style: const TextStyle(color: Colors.white60, fontSize: 13),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              softWrap: true,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnalyzeButton() {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF51FFBD),
+            Color(0xFF1AE7B8),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x2251FFBD),
+            blurRadius: 14,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _avviaAnalisi,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.black,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        ),
+        child: _isLoading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Text(
+                'AVVIA ANALISI DEL CERVELLO',
+                style: TextStyle(
+                  fontSize: 16,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+      ),
     );
   }
 
@@ -644,22 +1126,13 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
 
   Widget _buildPremiumPerksCard() {
     const perks = [
-      'Report illimitati con storico cifrato',
-      'Alert prioritari su push + email',
-      'Generazione automatica di PEC/ricorsi',
-      'Supporto dedicato + revisione legale',
+      'Analisi illimitate (sblocca il limite giornaliero)',
+      'Storico locale delle bozze generate',
     ];
-    final status =
-        _subscriptionStatus ?? const SubscriptionStatus(state: SubscriptionState.free);
-    final isActive = status.isActive;
-    final actionLabel = isActive
-        ? 'Premium attivo'
-        : status.state == SubscriptionState.trial
-            ? 'Passa a premium'
-            : 'Inizia la prova gratuita';
-    final action = isActive
-        ? null
-        : (status.state == SubscriptionState.trial ? _subscribePremium : _startTrial);
+    final isActive = _isPremium;
+    final monthly = _findProduct('com.benedettoriba.bureaucracy.premium.monthly');
+    final annual = _findProduct('com.benedettoriba.bureaucracy.premium.annual');
+    final priceLine = _buildPriceLine(monthly, annual);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -690,29 +1163,69 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
           ),
           const SizedBox(height: 8),
           Text(
-            status.label,
-            style: const TextStyle(color: Colors.greenAccent, fontSize: 13),
+            isActive ? 'Abbonamento attivo' : 'Sblocca tutte le funzionalità premium',
+            style: TextStyle(
+              color: isActive ? Colors.greenAccent : Colors.white70,
+              fontSize: 13,
+            ),
           ),
+          if (priceLine.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              priceLine,
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+          ],
           const SizedBox(height: 12),
           ...perks.map(_buildBenefitRow),
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: action,
+            onPressed: isActive || !_storeAvailable || _isPurchasing
+                ? null
+                : _showPurchaseOptions,
             style: ElevatedButton.styleFrom(
               backgroundColor:
-                  action == null ? Colors.greenAccent.withAlpha((0.6 * 255).round()) : Colors.greenAccent,
+                  isActive || !_storeAvailable
+                      ? Colors.greenAccent.withAlpha((0.6 * 255).round())
+                      : Colors.greenAccent,
               foregroundColor: Colors.black,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
             ),
-            child: Text(action == null ? 'Premium attivo' : actionLabel),
+            child: Text(
+              isActive
+                  ? 'Premium attivo'
+                  : _isPurchasing
+                      ? 'Operazione in corso...'
+                      : 'Sblocca premium',
+            ),
           ),
           if (!isActive)
-            TextButton(
-              onPressed: _subscribePremium,
-              style: TextButton.styleFrom(foregroundColor: Colors.greenAccent),
-              child: const Text('Mostra piani e prezzi'),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton(
+                  onPressed: _storeAvailable ? _showPurchaseOptions : null,
+                  style: TextButton.styleFrom(foregroundColor: Colors.greenAccent),
+                  child: const Text('Mostra piani e prezzi'),
+                ),
+                TextButton(
+                  onPressed: _storeAvailable ? _restorePurchases : null,
+                  style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                  child: const Text('Ripristina acquisti'),
+                ),
+              ],
+            ),
+          if (_storeError != null)
+            Text(
+              _storeError!,
+              style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+            ),
+          if (!_storeAvailable)
+            const Text(
+              'Store non disponibile al momento.',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
             ),
         ],
       ),
@@ -774,12 +1287,12 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
           const SizedBox(width: 10),
           const Expanded(
             child: Text(
-              'Sblocca analisi illimitate, alert prioritari e storage sicuro.',
+              'Sblocca analisi illimitate e rimuovi il limite giornaliero gratuito.',
               style: TextStyle(color: Colors.white70),
             ),
           ),
           ElevatedButton(
-            onPressed: () {},
+            onPressed: _storeAvailable ? _showPurchaseOptions : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.greenAccent,
               foregroundColor: Colors.black,
@@ -795,93 +1308,169 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     );
   }
 
-  Widget _buildAlertSettings() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F131A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white12),
+  ProductDetails? _findProduct(String id) {
+    for (final product in _products) {
+      if (product.id == id) return product;
+    }
+    return null;
+  }
+
+  String _buildPriceLine(ProductDetails? monthly, ProductDetails? annual) {
+    if (monthly == null && annual == null) return '';
+    final parts = <String>[];
+    if (monthly != null) parts.add('Mensile ${monthly.price}');
+    if (annual != null) parts.add('Annuale ${annual.price}');
+    return parts.join(' • ');
+  }
+
+  Future<void> _showPurchaseOptions() async {
+    final monthly = _findProduct('com.benedettoriba.bureaucracy.premium.monthly');
+    final annual = _findProduct('com.benedettoriba.bureaucracy.premium.annual');
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF0F1117),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Alert prioritari',
-            style: TextStyle(
-                color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Ricevi notifiche push o email quando aumenta il rischio o arriva una nuova issue.',
-            style: TextStyle(color: Colors.white60, fontSize: 13),
-          ),
-          const SizedBox(height: 12),
-          SwitchListTile(
-            title: const Text('Push priority alert'),
-            subtitle: const Text('Vibrazione e badge subito sul device'),
-            value: _pushAlertsEnabled,
-            activeThumbColor: Colors.greenAccent,
-            activeTrackColor: Colors.greenAccent,
-            onChanged: (value) => _applyAlertToggle(value, true),
-          ),
-          SwitchListTile(
-            title: const Text('Email summary giornaliero'),
-            subtitle: const Text('Report automatico con next steps'),
-            value: _emailAlertsEnabled,
-            activeThumbColor: Colors.greenAccent,
-            activeTrackColor: Colors.greenAccent,
-            onChanged: (value) => _applyAlertToggle(value, false),
-          ),
-        ],
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Scegli il piano',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Eventuali prove gratuite vengono mostrate al checkout.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            if (_storeError != null)
+              Text(
+                _storeError!,
+                style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+              ),
+            if (monthly != null)
+              ListTile(
+                title: const Text('Mensile'),
+                subtitle: Text(monthly.description),
+                trailing: Text(monthly.price),
+                onTap: _isPurchasing
+                    ? null
+                    : () {
+                        Navigator.of(context).pop();
+                        _buy(monthly);
+                      },
+              ),
+            if (annual != null)
+              ListTile(
+                title: const Text('Annuale'),
+                subtitle: Text(annual.description),
+                trailing: Text(annual.price),
+                onTap: _isPurchasing
+                    ? null
+                    : () {
+                        Navigator.of(context).pop();
+                        _buy(annual);
+                      },
+              ),
+            if (monthly == null && annual == null)
+              const Text(
+                'Prodotti non disponibili al momento.',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: _restorePurchases,
+              style: TextButton.styleFrom(foregroundColor: Colors.white70),
+              child: const Text('Ripristina acquisti'),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  void _applyAlertToggle(bool value, bool push) {
-    setState(() {
-      if (push) {
-        _pushAlertsEnabled = value;
-      } else {
-        _emailAlertsEnabled = value;
-      }
-    });
-    final label = push ? 'Push alert' : 'Email summary';
-    final status = value ? 'attivato' : 'disattivato';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$label $status'),
-        duration: const Duration(seconds: 1),
-      ),
+  Future<void> _buy(ProductDetails product) async {
+    if (!_storeAvailable) return;
+    setState(() => _isPurchasing = true);
+    final param = PurchaseParam(
+      productDetails: product,
+      applicationUserName: _userIdController.text.trim().isEmpty
+          ? null
+          : _userIdController.text.trim(),
     );
+    try {
+      await _iap.buyNonConsumable(purchaseParam: param);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isPurchasing = false;
+        _storeError = 'Acquisto non riuscito: $error';
+      });
+    }
   }
 
-  Future<void> _startTrial() async {
-    final service = _subscriptionService;
-    if (service == null) return;
-    await service.startTrial();
-    await _reloadSubscriptionStatus('Prova gratuita attivata: 7 giorni');
-  }
-
-  Future<void> _subscribePremium() async {
-    final service = _subscriptionService;
-    if (service == null) return;
-    await service.subscribe();
-    await _reloadSubscriptionStatus('Abbonamento premium attivo');
-  }
-
-  Future<void> _reloadSubscriptionStatus(String message) async {
-    final service = _subscriptionService;
-    if (service == null) return;
-    final status = service.loadStatus();
+  Future<void> _restorePurchases() async {
+    if (!_storeAvailable) return;
+    await _iap.restorePurchases();
     if (!mounted) return;
-    setState(() => _subscriptionStatus = status);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
+      const SnackBar(
+        content: Text('Ripristino acquisti avviato'),
+        duration: Duration(seconds: 2),
       ),
     );
+  }
+
+  Future<void> _handlePurchaseUpdates(
+      List<PurchaseDetails> purchases) async {
+    var premium = _isPremium;
+    final wasPremium = _isPremium;
+    for (final purchase in purchases) {
+      switch (purchase.status) {
+        case PurchaseStatus.pending:
+          if (mounted) setState(() => _isPurchasing = true);
+          break;
+        case PurchaseStatus.error:
+          if (mounted) {
+            setState(() {
+              _isPurchasing = false;
+              _storeError =
+                  purchase.error?.message ?? 'Acquisto non riuscito.';
+            });
+          }
+          break;
+        case PurchaseStatus.purchased:
+        case PurchaseStatus.restored:
+          if (_productIds.contains(purchase.productID)) {
+            premium = true;
+          }
+          if (purchase.pendingCompletePurchase) {
+            await _iap.completePurchase(purchase);
+          }
+          break;
+        default:
+          if (mounted) setState(() => _isPurchasing = false);
+          break;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _isPremium = premium;
+      _isPurchasing = false;
+    });
+    if (!wasPremium && premium) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Premium attivo'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Future<void> _generaDocumento() async {
@@ -968,81 +1557,6 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     } catch (error) {
       debugPrint('Impossibile salvare la cronologia: $error');
     }
-  }
-
-  Widget _buildDocumentScanner() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF10131A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white12),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 14,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Scannerizza o carica un documento',
-              style: TextStyle(
-                  color: Colors.blueGrey, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          if (_pickedImage != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.file(
-                _pickedImage!,
-                fit: BoxFit.cover,
-                height: 180,
-              ),
-            ),
-          if (_isProcessingImage) ...[
-            const SizedBox(height: 12),
-            const LinearProgressIndicator(),
-          ],
-          if (_ocrText != null && _ocrText!.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text('Testo estratto:',
-                style: TextStyle(color: Colors.grey[400], fontSize: 12)),
-            const SizedBox(height: 4),
-            Text(_ocrText!, style: const TextStyle(color: Colors.white70)),
-          ],
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 10,
-            runSpacing: 8,
-            children: [
-              ElevatedButton.icon(
-                onPressed: () => _pickDocument(ImageSource.camera),
-                icon: const Icon(Icons.camera_alt),
-                label: const Text('Fotografa'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurpleAccent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _pickDocument(ImageSource.gallery),
-                icon: const Icon(Icons.photo_library),
-                label: const Text('Carica galleria'),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.white24),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildRiskBadge(RiskLevel? level) {
