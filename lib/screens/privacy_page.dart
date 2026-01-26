@@ -21,7 +21,12 @@ class PrivacyPage extends StatelessWidget {
           const _SectionBullet(
             title: 'Dati trattati',
             description:
-                'I dati inseriti (testo e metadati) vengono inviati al nostro server solo per generare l’analisi e la bozza richiesta. Non vengono condivisi con terze parti.',
+                'I dati inseriti (testo e metadati) vengono inviati al server solo per generare l\'analisi e la bozza richiesta. Non usiamo tracking o advertising.',
+          ),
+          const _SectionBullet(
+            title: 'Documenti e OCR',
+            description:
+                'Se scatti o carichi un documento, l\'OCR su iOS avviene on-device. Le immagini restano sul dispositivo e non vengono inviate al server.',
           ),
           const _SectionBullet(
             title: 'Permessi richiesti',
@@ -29,15 +34,15 @@ class PrivacyPage extends StatelessWidget {
                 'Camera e libreria vengono usate esclusivamente per raccogliere documenti di riferimento; le descrizioni `NSCameraUsageDescription` e `NSPhotoLibraryUsageDescription` spiegano il motivo all’utente.',
           ),
           const _SectionBullet(
-            title: 'Storage e cronologia',
+            title: 'Storage e controllo',
             description:
-                'Le bozze e lo storico vengono salvati localmente sul dispositivo. Puoi eliminarli rimuovendo l’app.',
+                'Le bozze e lo storico sono salvati localmente sul dispositivo. Puoi esportare o eliminare i dati dalla sezione "Gestione dati" o disinstallando l\'app.',
           ),
           const SizedBox(height: 18),
           ElevatedButton.icon(
             onPressed: () => Navigator.of(context).pop(),
             icon: const Icon(Icons.check, size: 20),
-            label: const Text('Ho capito, torna all’app'),
+            label: const Text('Ho capito, torna all\'app'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF8BFFB7),
               foregroundColor: Colors.black,

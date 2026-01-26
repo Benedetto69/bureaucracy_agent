@@ -1,9 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,7 +18,6 @@ import 'services/ocr_service.dart';
 import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
   runApp(const BureaucracyAgentApp());
 }
 
@@ -51,7 +50,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   final DocumentAnalyzerApi _api = DocumentAnalyzerApi();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _userIdController =
-      TextEditingController(text: 'cliente-000');
+      TextEditingController(text: 'pratica-000');
   final TextEditingController _jurisdictionController =
       TextEditingController(text: 'Milano');
   final TextEditingController _amountController =
@@ -92,7 +91,6 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     ],
   );
   static const _panelBorderColor = Color(0xFF1C2336);
-  static const _panelAccent = Color(0xFF51FFBD);
   static final List<AnalysisIssue> _offlineIssuesDemo = [
     AnalysisIssue(
       type: IssueType.substance,
@@ -458,12 +456,101 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
                   const SizedBox(height: 12),
                   _buildDocumentHistory(),
                 ],
+                const SizedBox(height: 20),
+                _sectionTitle('Gestione dati', compact: true),
+                const SizedBox(height: 10),
+                _buildDataControls(),
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildDataControls() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F131A),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Puoi esportare o eliminare i dati salvati localmente sul dispositivo.',
+            style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _exportLocalData,
+            icon: const Icon(Icons.file_download_outlined),
+            label: const Text('Esporta dati (copia JSON)'),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _deleteLocalData,
+            icon: const Icon(Icons.delete_outline),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.redAccent,
+            ),
+            label: const Text('Elimina dati locali'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportLocalData() async {
+    final payload = <String, dynamic>{
+      'exported_at': DateTime.now().toUtc().toIso8601String(),
+      'analysis_limit': {
+        'free_daily_limit': _freeDailyLimit,
+        'day': _analysisCountDate,
+        'count': _analysisCountToday,
+      },
+      'history': _documentHistory.map((e) => e.toJson()).toList(),
+    };
+    final jsonText = const JsonEncoder.withIndent('  ').convert(payload);
+    await Clipboard.setData(ClipboardData(text: jsonText));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Esportazione copiata negli appunti'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _deleteLocalData() async {
+    try {
+      await _historyStorage?.clearHistory();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_analysisCountKey);
+      await prefs.remove(_analysisCountDateKey);
+      if (!mounted) return;
+      setState(() {
+        _documentHistory.clear();
+        _analysisCountToday = 0;
+        _analysisCountDate = _formatDay(DateTime.now());
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dati locali eliminati'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Impossibile eliminare i dati: $error'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Widget _buildIssueCard(AnalysisIssue issue) {
@@ -607,10 +694,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
                   ),
                 ),
               ),
-              Text(
-                'Clienti verificati',
-                style: TextStyle(color: _panelAccent, fontSize: 12),
-              ),
+              SizedBox.shrink(),
             ],
           ),
           const SizedBox(height: 12),
@@ -698,9 +782,17 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     return Column(
       children: [
         _buildGlassField(
-          label: 'Client ID',
+          label: 'Codice pratica',
           controller: _userIdController,
           icon: Icons.badge_outlined,
+        ),
+        const SizedBox(height: 6),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Usa un codice interno, evita dati personali (nome, email, telefono).',
+            style: TextStyle(color: Colors.white54, fontSize: 11),
+          ),
         ),
         const SizedBox(height: 12),
         Row(
