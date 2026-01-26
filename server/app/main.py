@@ -1,5 +1,6 @@
 import json
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,10 +26,14 @@ DOTENV_PATH = BASE_DIR.parent / ".env"
 load_dotenv(DOTENV_PATH)
 
 API_TOKEN = os.getenv("BACKEND_API_TOKEN", "changeme")
-ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173"
-).split(",")
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
 
 # Rate limiting configuration
 RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "50"))
@@ -75,11 +80,26 @@ app.add_middleware(
 )
 
 logger = logging.getLogger("bureaucracy_agent_brain")
-handler = logging.StreamHandler()
-formatter = logging.Formatter("%(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
 logger.setLevel(logging.INFO)
+formatter = logging.Formatter("%(message)s")
+
+if not logger.handlers:
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+
+    log_file_path = os.getenv("LOG_FILE_PATH", "").strip()
+    if log_file_path:
+        retention_days = int(os.getenv("LOG_RETENTION_DAYS", "30"))
+        file_handler = TimedRotatingFileHandler(
+            log_file_path,
+            when="D",
+            interval=1,
+            backupCount=retention_days,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
 
 def verify_token(authorization: Optional[str] = Header(None)):

@@ -17,7 +17,11 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ### Environment variables
 
 - `BACKEND_API_TOKEN`: la chiave condivisa con l'app Flutter (corrisponde a `Bearer <token>` nell'header `Authorization`).
-- `.env` è già presente nella root dell'app Flutter e può contenere anche `API_BASE_URL=http://127.0.0.1:8000`.
+- `ALLOWED_ORIGINS`: lista separata da virgole per CORS (es. `https://tuodominio.com,https://app.tuodominio.com`).
+- `RATE_LIMIT_MAX`: limite giornaliero richieste per utente (default `50`).
+- `LOG_FILE_PATH`: se impostato, scrive log su file con rotazione giornaliera.
+- `LOG_RETENTION_DAYS`: retention log in giorni (default `30`, usato solo se `LOG_FILE_PATH` è impostato).
+- Crea un `.env` locale (non committato) nella root del repo con `API_BASE_URL` e `BACKEND_API_TOKEN` per la build iOS/Android.
 
 ## Contratto `/analyze`
 

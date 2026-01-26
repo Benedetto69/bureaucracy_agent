@@ -12,7 +12,7 @@ Use this runbook to handle GDPR data requests.
 
 ## 3. Data sources
 - Client (local): drafts + metadata stored in SharedPreferences. User can export/delete in-app (Gestione dati).
-- Server: technical logs (request_id, status, document_id) for a limited retention period.
+- Server: technical logs (request_id, status, document_id) for a limited retention period (up to 30 days).
 
 ## 4. Fulfilment
 - Access/export: provide any server log entries that match the request_id or document_id (if retained).

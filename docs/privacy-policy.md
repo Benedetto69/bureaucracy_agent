@@ -24,7 +24,7 @@ Per generare l'analisi e la bozza, l'app invia al server solo i dati necessari (
 
 ## Conservazione (retention)
 - Sul dispositivo: lo storico delle bozze e' salvato localmente nell'app fino a quando l'utente lo elimina o disinstalla l'app.
-- Sul server: i dati sono trattati per rispondere alla richiesta; eventuali log tecnici possono essere conservati per un periodo limitato per sicurezza e debug operativo (consigliato 30 giorni).
+- Sul server: i dati sono trattati per rispondere alla richiesta; eventuali log tecnici sono conservati per un periodo limitato (fino a 30 giorni) per sicurezza e debug operativo.
 
 ## Finalita' e base giuridica (da validare)
 - Erogazione del servizio richiesto dall'utente (analisi/bozza).

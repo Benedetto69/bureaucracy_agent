@@ -7,7 +7,7 @@
 ## 2. Autenticazione & logging
 - Ogni richiesta include `Authorization: Bearer <token>` e `Request-Id` univoco.
 - I log di default registrano solo eventi tecnici (request start/end, status, document_id) e **non** includono contenuti utente.
-- Imposta una retention dei log (es. 30 giorni) sul sistema di logging in produzione.
+- Se `LOG_FILE_PATH` è impostato, il server ruota i log giornalmente e conserva fino a `LOG_RETENTION_DAYS` (default 30).
 
 ## 3. Configurazione build
 - `.env.template` contiene i placeholder di build: `API_BASE_URL` e `BACKEND_API_TOKEN`.

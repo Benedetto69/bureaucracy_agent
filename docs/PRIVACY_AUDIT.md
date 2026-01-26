@@ -31,7 +31,7 @@ Scope: Bureaucracy · Analyzer (iOS app + backend FastAPI)
 
 ## 5. Retention
 - Local: history kept until user deletes or uninstalls.
-- Server: process only; keep technical logs for a limited window (suggested 30 days).
+- Server: process only; keep technical logs for a limited window (up to 30 days).
 
 ## 6. Gaps / follow-ups
 - Add a public privacy contact email before publishing.
