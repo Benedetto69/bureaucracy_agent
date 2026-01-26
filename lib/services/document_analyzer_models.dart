@@ -1,26 +1,10 @@
 /// Payload JSON standard che il backend FastAPI si aspetta per l’analisi.
-class AlertPreferences {
-  final bool pushNotifications;
-  final bool emailSummaries;
-
-  const AlertPreferences({
-    this.pushNotifications = true,
-    this.emailSummaries = false,
-  });
-
-  Map<String, dynamic> toJson() => {
-        'push_notifications': pushNotifications,
-        'email_summaries': emailSummaries,
-      };
-}
-
 class AnalyzePayload {
   final String documentId;
   final SourceType source;
   final Metadata metadata;
   final String text;
   final List<Attachment> attachments;
-  final AlertPreferences alertPreferences;
 
   const AnalyzePayload({
     required this.documentId,
@@ -28,7 +12,6 @@ class AnalyzePayload {
     required this.metadata,
     required this.text,
     this.attachments = const [],
-    this.alertPreferences = const AlertPreferences(),
   });
 
   Map<String, dynamic> toJson() => {
@@ -36,7 +19,6 @@ class AnalyzePayload {
         'source': source.value,
         'metadata': metadata.toJson(),
         'text': text,
-        'alert_preferences': alertPreferences.toJson(),
         if (attachments.isNotEmpty)
           'attachments':
               attachments.map((attachment) => attachment.toJson()).toList(),

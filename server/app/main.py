@@ -10,7 +10,6 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, 
 from fastapi.middleware.cors import CORSMiddleware
 
 from .schemas import (
-    AlertPreferences,
     AnalyzeRequest,
     AnalyzeResponse,
     AnalysisIssue,
@@ -180,19 +179,12 @@ def build_summary(issues: List[AnalysisIssue], payload: AnalyzeRequest) -> Tuple
         if payload.metadata.amount > 1000 or max_confidence >= 0.7
         else "medium"
     )
-    notify_hint: List[str] = []
-    if payload.alert_preferences.push_notifications:
-        notify_hint.append("push prioritari attivi")
-    if payload.alert_preferences.email_summaries:
-        notify_hint.append("email summary giornaliero")
     actions = []
     for issue in issues:
         actions.extend(issue.actions)
     metadata_hint = f"({payload.metadata.jurisdiction})"
     truncated_actions = actions[:3]
     next_step = " · ".join(truncated_actions) or f"Raccogli più contesto {metadata_hint}"
-    if notify_hint:
-        next_step = f"{next_step} · {', '.join(notify_hint)}"
     return level, next_step
 
 
@@ -318,8 +310,6 @@ async def analyze(
                 "event": "analysis.start",
                 "request_id": request_id,
                 "document_id": payload.document_id,
-                "user_id": payload.metadata.user_id,
-                "alert_preferences": payload.alert_preferences.model_dump(),
             }
         )
     )

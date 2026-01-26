@@ -1,12 +1,13 @@
 import 'dart:convert';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
-import 'document_analyzer_models.dart';
+import 'package:bureaucracy_agent/services/document_analyzer_models.dart';
 
-export 'document_analyzer_models.dart';
+const String _envApiBaseUrl = String.fromEnvironment('API_BASE_URL');
+const String _envBackendToken = String.fromEnvironment('BACKEND_API_TOKEN');
 
 /// Client che consuma `/analyze` e `/generate-document` restituendo modelli tipati.
 class DocumentAnalyzerApi {
@@ -14,16 +15,46 @@ class DocumentAnalyzerApi {
   final String _baseUrl;
   final String _token;
   final Uuid _uuid;
+  static const _defaultBaseUrl = 'http://127.0.0.1:8000';
+  static const _defaultToken = 'changeme';
 
   DocumentAnalyzerApi({
     http.Client? httpClient,
     String? baseUrl,
     String? token,
   })  : _httpClient = httpClient ?? http.Client(),
-        _baseUrl =
-            baseUrl ?? dotenv.env['API_BASE_URL'] ?? 'http://127.0.0.1:8000',
-        _token = token ?? dotenv.env['BACKEND_API_TOKEN'] ?? 'changeme',
+        _baseUrl = _resolveBaseUrl(baseUrl),
+        _token = _resolveToken(token),
         _uuid = const Uuid();
+
+  static String _resolveBaseUrl(String? override) {
+    final resolved = override ??
+        (_envApiBaseUrl.isNotEmpty ? _envApiBaseUrl : null) ??
+        _defaultBaseUrl;
+    if (kReleaseMode && resolved == _defaultBaseUrl) {
+      throw StateError('API_BASE_URL non configurato: imposta un endpoint '
+          'HTTPS reale in fase di build (dart-define API_BASE_URL).');
+    }
+    if (kReleaseMode) {
+      final uri = Uri.tryParse(resolved);
+      if (uri == null || uri.scheme != 'https') {
+        throw StateError(
+            'API_BASE_URL non valido: in release e\' richiesto un endpoint HTTPS.');
+      }
+    }
+    return resolved;
+  }
+
+  static String _resolveToken(String? override) {
+    final resolved = override ??
+        (_envBackendToken.isNotEmpty ? _envBackendToken : null) ??
+        _defaultToken;
+    if (kReleaseMode && (resolved.isEmpty || resolved == _defaultToken)) {
+      throw StateError('BACKEND_API_TOKEN non configurato: sostituisci '
+          'il placeholder in fase di build (dart-define BACKEND_API_TOKEN).');
+    }
+    return resolved;
+  }
 
   Future<AnalyzeResponse> analyzeDocument(
     AnalyzePayload payload, {

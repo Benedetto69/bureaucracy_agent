@@ -10,9 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.6
-  http: ^1.1.0                # Fondamentale per parlare col server
-  flutter_dotenv: ^5.1.0      # Per nascondere le tue chiavi API
-  encrypt: ^5.0.3             # Per criptare i dati sensibili
+  http: ^1.1.0
   in_app_purchase: ^3.2.0     # StoreKit/Google Play Billing
   uuid: ^4.5.2
   image_picker: ^0.8.7+5
@@ -25,5 +23,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - .env                    # Indica a Flutter di includere i tuoi segreti

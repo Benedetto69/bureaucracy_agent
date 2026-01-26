@@ -1,28 +1,28 @@
 # Backend Contract v0.1
 
 ## Purpose
-Questo documento definisce il contratto JSON tra l'app Flutter (OCR/chat) e il backend Python/FastAPI. Fissiamo i campi minimi e gli stati attesi per mantenere blindato il “cervello” e guidare l’evoluzione ciclica dell’interfaccia.
+Questo documento definisce il contratto JSON tra l'app Flutter e il backend Python/FastAPI.
 
 ## Endpoint principale
 `POST /analyze`
 
 ### Headers obbligatori
-- `Authorization`: `Bearer <token>` (il token viene firmato lato server e ruota periodicamente)
-- `Request-Id`: UUID per tracciare ogni invocazione (aiuta logging strutturato)
+- `Authorization`: `Bearer <token>`
+- `Request-Id`: UUID per tracciare ogni invocazione
 
 ### Payload JSON (request)
 ```json
 {
-  "document_id": "string",           // UUID/identificativo locale del documento
-  "source": "ocr | upload | manual",// da dove arriva il testo
+  "document_id": "string",
+  "source": "ocr | upload | manual",
   "metadata": {
-    "user_id": "string",             // identificatore interno cliente
-    "issue_date": "YYYY-MM-DD",      // data della notifica/infrazione
-    "amount": "decimal",             // importo contestato
-    "jurisdiction": "string"         // es. "Milano", "Roma"
+    "user_id": "string",
+    "issue_date": "YYYY-MM-DD",
+    "amount": "decimal",
+    "jurisdiction": "string"
   },
-  "text": "string",                  // testo integrale estratto dallo scan
-  "attachments": [                   // opzionale, solo se servono prove binarie
+  "text": "string",
+  "attachments": [
     {
       "filename": "string",
       "mime_type": "string",
@@ -35,45 +35,44 @@ Questo documento definisce il contratto JSON tra l'app Flutter (OCR/chat) e il b
 ### Response JSON
 ```json
 {
-  "document_id": "string",       // deve tornare identico alla request
+  "document_id": "string",
   "results": [
     {
       "type": "process | formality | substance",
-      "issue": "string",         // bug legal individuato
-      "confidence": 0.0,         // 0-1
+      "issue": "string",
+      "confidence": 0.0,
       "references": [
         {
-          "source": "norma | giurisprudenza",
-          "citation": "art. 3, comma 4, Codice della Strada",
+          "source": "norma | giurisprudenza | policy",
+          "citation": "string",
           "url": "https://..."
         }
       ],
-      "actions": [              // suggerimenti pratici
-        "Invia PEC entro 30 giorni",
-        "Chiedi accesso agli atti presso..."
+      "actions": [
+        "string"
       ]
     }
   ],
   "summary": {
     "risk_level": "low | medium | high",
-    "next_step": "string"        // testo sintetico da mostrare in UI
+    "next_step": "string"
   },
   "server_time": "ISO8601"
 }
 ```
 
 ### Errori
-- `400`: payload non valido (Pydantic)
+- `400`: payload non valido
 - `401`: autenticazione fallita
-- `429`: rate limit (max 15 req/min per utente)
-- `500`: errore interno, includere `Request-Id` per correlazione
+- `500`: errore interno
 
 ## Validazioni e logging
-- Validazione Pydantic su `metadata` (date, decimal) e `text` non vuoto.
-- Log strutturato (JSON) con `Request-Id`, `user_id`, `document_id`, `status`.
-- Il backend mantiene un vector DB per norme/jurisprudenza; includere `references` con score quando disponibile.
+- Validazione Pydantic su `metadata` e `text`.
+- Log strutturato con `Request-Id` e `document_id` (senza contenuto utente).
+- Il vector store e' opzionale: quando disponibile, popola `references`.
 
-## Prossimi passi
-1. Stampare questo contratto in `lib/services/api_service.dart` come esempio di payload/response.
-2. Costruire il FastAPI stub che restituisce un JSON conforme per test offline.
-3. Collegare Flutter al backend tramite `.env` per `API_BASE_URL` e `API_KEY`.
+Nota: il campo `metadata.user_id` e' usato come codice pratica interno; evitare dati personali.
+
+## Note di integrazione
+- In build release, passa `API_BASE_URL` e `BACKEND_API_TOKEN` tramite `--dart-define`.
+- Implementare rate limiting e token rotation e' una misura consigliata per produzione.

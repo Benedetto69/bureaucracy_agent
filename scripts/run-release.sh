@@ -46,7 +46,7 @@ function finish_steps() {
   echo
   echo "✅ Ambiente pronto."
   echo "   - backend: http://127.0.0.1:8000 (token changeme)"
-  echo "   - .env aggiornato per puntare al mock"
+  echo "   - in debug l'app usa il default http://127.0.0.1:8000"
   echo "   - Ora apri ios/Runner.xcworkspace e premi ▶️ sul tuo device."
   echo "   - Per pulire il log backend: kill \$(cat $UVICORN_PID_FILE) && rm $UVICORN_PID_FILE"
 }

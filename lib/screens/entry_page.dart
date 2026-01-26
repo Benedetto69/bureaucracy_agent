@@ -37,7 +37,7 @@ const _riskStatuses = [
 ];
 
 const _pricingCopy =
-    'Piano gratuito con limite giornaliero; il premium sblocca analisi illimitate. Prezzi e prova gratuita vengono mostrati al checkout.';
+    'Piano gratuito con limite giornaliero; il premium sblocca analisi illimitate. Eventuali prove gratuite vengono mostrate al checkout.';
 
 const _monetizationDetails = [
   _MonetizationDetail(

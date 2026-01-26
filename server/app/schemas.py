@@ -24,18 +24,12 @@ class Metadata(BaseModel):
         return value.strip().title()
 
 
-class AlertPreferences(BaseModel):
-    push_notifications: bool = Field(default=True)
-    email_summaries: bool = Field(default=False)
-
-
 class AnalyzeRequest(BaseModel):
     document_id: str = Field(..., min_length=1)
     source: Literal["ocr", "upload", "manual"]
     metadata: Metadata
     text: str = Field(..., min_length=10)
     attachments: Optional[List[Attachment]] = Field(default_factory=list)
-    alert_preferences: AlertPreferences = Field(default_factory=AlertPreferences)
 
 
 class Reference(BaseModel):

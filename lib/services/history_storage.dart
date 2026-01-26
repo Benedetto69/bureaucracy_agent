@@ -28,4 +28,8 @@ class DocumentHistoryStorage {
     final encoded = entries.map((entry) => entry.encode()).toList();
     await _prefs.setStringList(_historyKey, encoded);
   }
+
+  Future<void> clearHistory() async {
+    await _prefs.remove(_historyKey);
+  }
 }
