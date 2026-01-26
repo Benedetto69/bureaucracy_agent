@@ -16,6 +16,7 @@ import 'services/document_analyzer_models.dart';
 import 'services/history_storage.dart';
 import 'services/ocr_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/widgets.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const BureaucracyAgentApp());
@@ -78,6 +79,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   String? _storeError;
   List<ProductDetails> _products = [];
   static const int _freeDailyLimit = 3;
+  static const int _maxHistoryEntries = 50;
   static const String _analysisCountKey = 'analysis_count';
   static const String _analysisCountDateKey = 'analysis_count_date';
   int _analysisCountToday = 0;
@@ -248,16 +250,47 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     }
   }
 
+  static const int _maxTextLength = 10000;
+  static const int _minTextLength = 10;
+
   Future<void> _avviaAnalisi() async {
     final description = _descriptionController.text.trim();
     final amount = double.tryParse(_amountController.text.replaceAll(',', '.'));
+    final userId = _userIdController.text.trim();
+    final jurisdiction = _jurisdictionController.text.trim();
+
     if (description.isEmpty) {
       setState(() => _errorMessage = 'Descrivi il caso prima di inviare.');
       return;
     }
 
+    if (description.length < _minTextLength) {
+      setState(() => _errorMessage = 'La descrizione deve avere almeno $_minTextLength caratteri.');
+      return;
+    }
+
+    if (description.length > _maxTextLength) {
+      setState(() => _errorMessage = 'La descrizione non può superare $_maxTextLength caratteri.');
+      return;
+    }
+
     if (amount == null || amount <= 0) {
       setState(() => _errorMessage = 'Inserisci un importo valido (> 0).');
+      return;
+    }
+
+    if (amount > 1000000) {
+      setState(() => _errorMessage = 'Importo troppo elevato (max 1.000.000€).');
+      return;
+    }
+
+    if (userId.isEmpty || userId.length > 100) {
+      setState(() => _errorMessage = 'Codice pratica non valido (1-100 caratteri).');
+      return;
+    }
+
+    if (jurisdiction.isEmpty || jurisdiction.length > 50) {
+      setState(() => _errorMessage = 'Giurisdizione non valida (1-50 caratteri).');
       return;
     }
 
@@ -324,7 +357,14 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
         _issues = [];
       });
     } finally {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        // Clean up image from memory after analysis
+        if (analysisSucceeded) {
+          _pickedImage = null;
+          _ocrText = null;
+        }
+      });
       if (analysisSucceeded) {
         await _recordAnalysisUsage();
       }
@@ -439,9 +479,17 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
                   _buildErrorBanner(),
                 ],
                 const SizedBox(height: 20),
-                _buildSummarySection(),
+                SummarySection(
+                  summary: _summary,
+                  defaultMessage: _esitoIA,
+                  serverTime: _serverTime,
+                  userId: _userIdController.text.trim(),
+                  jurisdiction: _jurisdictionController.text.trim(),
+                  formattedAmount: _formattedCurrency(),
+                  formattedDate: _formattedIssueDate(),
+                ),
                 const SizedBox(height: 16),
-                _buildRiskStats(),
+                RiskStats(issues: _issues),
                 const SizedBox(height: 18),
                 _buildPremiumPerksCard(),
                 const SizedBox(height: 16),
@@ -449,12 +497,12 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
                 const SizedBox(height: 18),
                 _buildDocumentActions(),
                 const SizedBox(height: 18),
-                ..._issues.map((issue) => _buildIssueCard(issue)),
+                ..._issues.map((issue) => IssueCard(issue: issue)),
                 if (_documentHistory.isNotEmpty) ...[
                   const SizedBox(height: 26),
                   _sectionTitle('Storico bozze generate', compact: true),
                   const SizedBox(height: 12),
-                  _buildDocumentHistory(),
+                  DocumentHistoryList(history: _documentHistory),
                 ],
                 const SizedBox(height: 20),
                 _sectionTitle('Gestione dati', compact: true),
@@ -551,58 +599,6 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
         ),
       );
     }
-  }
-
-  Widget _buildIssueCard(AnalysisIssue issue) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: const Color(0xFF1E1E1E),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '[${issue.type.name.toUpperCase()}] ${issue.issue}',
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold, color: Colors.white),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: issue.references.map((ref) {
-                return Tooltip(
-                  message: ref.url.toString(),
-                  child: Chip(
-                    label: Text(
-                      '${ref.citation} (${ref.source.name.toUpperCase()})',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    backgroundColor: Colors.blueGrey.shade800,
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 8),
-            Text('Azioni consigliate:',
-                style: TextStyle(color: Colors.grey[300])),
-            ...issue.actions.map((action) => Row(
-                  children: [
-                    const Icon(Icons.chevron_right,
-                        size: 20, color: Colors.greenAccent),
-                    Expanded(
-                      child: Text(
-                        action,
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                    ),
-                  ],
-                )),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _sectionTitle(String label, {bool compact = false}) {
@@ -1068,154 +1064,6 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     );
   }
 
-  Widget _buildSummarySection() {
-    final riskLevel = _summary?.riskLevel;
-    final riskLabel = riskLevel?.name.toUpperCase() ?? 'STRATEGIA IN ATTESA';
-    final nextStep = _summary?.nextStep ?? _esitoIA;
-    final serverTimeLabel =
-        _serverTime != null ? 'Aggiornato ${_serverTime!}' : null;
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            Color(0xFF141B2A),
-            Color(0xFF0E121A),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white10),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black38,
-            blurRadius: 14,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              _buildRiskBadge(riskLevel),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Rischio stimato: $riskLabel',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    if (serverTimeLabel != null)
-                      Text(
-                        serverTimeLabel,
-                        style: const TextStyle(color: Colors.grey, fontSize: 12),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            nextStep,
-            style: const TextStyle(fontSize: 16, color: Colors.greenAccent),
-          ),
-          const SizedBox(height: 16),
-          _buildMetadataChips(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRiskStats() {
-    final stats = _calculateRiskStats();
-    if (stats.isEmpty) {
-      return const SizedBox();
-    }
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: stats
-          .map(
-            (stat) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF10131A),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white10),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(stat.icon, color: stat.color, size: 20),
-                  const SizedBox(height: 6),
-                  Text(
-                    stat.label,
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    stat.value.toString(),
-                    style: TextStyle(
-                      color: stat.color,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-          .toList(),
-    );
-  }
-
-  List<_RiskStat> _calculateRiskStats() {
-    final counts = <IssueType, int>{};
-    for (final issue in _issues) {
-      counts.update(issue.type, (value) => value + 1, ifAbsent: () => 1);
-    }
-    return counts.entries
-        .map((entry) => _RiskStat(
-              label: entry.key.name.toUpperCase(),
-              value: entry.value,
-              color: _riskColor(_mapIssueTypeToRisk(entry.key)),
-              icon: _mapIssueTypeToIcon(entry.key),
-            ))
-        .toList();
-  }
-
-  RiskLevel _mapIssueTypeToRisk(IssueType type) {
-    switch (type) {
-      case IssueType.substance:
-        return RiskLevel.high;
-      case IssueType.process:
-        return RiskLevel.medium;
-      case IssueType.formality:
-        return RiskLevel.low;
-    }
-  }
-
-  IconData _mapIssueTypeToIcon(IssueType type) {
-    switch (type) {
-      case IssueType.process:
-        return Icons.calendar_month;
-      case IssueType.formality:
-        return Icons.document_scanner;
-      case IssueType.substance:
-        return Icons.gavel;
-    }
-  }
-
   Widget _buildPremiumPerksCard() {
     const perks = [
       'Analisi illimitate (sblocca il limite giornaliero)',
@@ -1635,8 +1483,13 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
       ),
     );
     if (response != null) {
-      setState(() => _documentHistory.insert(
-          0, DocumentHistoryEntry(response, DateTime.now())));
+      setState(() {
+        _documentHistory.insert(0, DocumentHistoryEntry(response, DateTime.now()));
+        // Limit history to max entries
+        if (_documentHistory.length > _maxHistoryEntries) {
+          _documentHistory.removeRange(_maxHistoryEntries, _documentHistory.length);
+        }
+      });
       await _persistDocumentHistory();
     }
   }
@@ -1651,60 +1504,6 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     }
   }
 
-  Widget _buildRiskBadge(RiskLevel? level) {
-    final color = _riskColor(level);
-    final label = level?.name.toUpperCase() ?? 'ATTESA';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withAlpha((0.25 * 255).round()),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.warning, size: 16, color: color),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMetadataChips() {
-    final chips = <Widget>[
-      _metadataChip('Cliente', _userIdController.text.trim()),
-      _metadataChip('Giurisdizione', _jurisdictionController.text.trim()),
-      _metadataChip('Importo', _formattedCurrency()),
-      _metadataChip('Notifica', _formattedIssueDate()),
-    ];
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 6,
-      children: chips,
-    );
-  }
-
-  Widget _metadataChip(String label, String value) {
-    return Chip(
-      label: Text(
-        '$label: $value',
-        style: const TextStyle(color: Colors.white70, fontSize: 12),
-      ),
-      backgroundColor: Colors.blueGrey.shade900,
-      side: const BorderSide(color: Colors.blueGrey),
-    );
-  }
-
   String _formattedCurrency() {
     final amount =
         double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
@@ -1714,81 +1513,4 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   String _formattedIssueDate() {
     return _issueDate.toIso8601String().split('T').first;
   }
-
-  Color _riskColor(RiskLevel? level) {
-    switch (level) {
-      case RiskLevel.high:
-        return Colors.redAccent;
-      case RiskLevel.medium:
-        return Colors.amberAccent;
-      case RiskLevel.low:
-        return Colors.greenAccent;
-      default:
-        return Colors.blueGrey;
-    }
-  }
-
-  Widget _buildDocumentHistory() {
-    return Column(
-      children: _documentHistory.map((entry) {
-        return Card(
-          color: const Color(0xFF1D1E24),
-          margin: const EdgeInsets.only(bottom: 12),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(entry.document.title,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, color: Colors.white)),
-                const SizedBox(height: 6),
-                Text(
-                  entry.document.body,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white70),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      entry.timestamp.toIso8601String().split('T').first,
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.copy, color: Colors.greenAccent),
-                      onPressed: () {
-                        Clipboard.setData(
-                            ClipboardData(text: entry.document.body));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Testo copiato negli appunti')),
-                        );
-                      },
-                    )
-                  ],
-                )
-              ],
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
-class _RiskStat {
-  final String label;
-  final int value;
-  final Color color;
-  final IconData icon;
-
-  _RiskStat({
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.icon,
-  });
 }

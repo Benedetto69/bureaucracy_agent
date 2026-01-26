@@ -1,10 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
-import 'package:bureaucracy_agent/services/document_analyzer_models.dart';
+import 'document_analyzer_models.dart';
 
 const String _envApiBaseUrl = String.fromEnvironment('API_BASE_URL');
 const String _envBackendToken = String.fromEnvironment('BACKEND_API_TOKEN');
@@ -15,8 +17,11 @@ class DocumentAnalyzerApi {
   final String _baseUrl;
   final String _token;
   final Uuid _uuid;
+
   static const _defaultBaseUrl = 'http://127.0.0.1:8000';
   static const _defaultToken = 'changeme';
+  static const _maxAttempts = 3;
+  static const _initialBackoff = Duration(milliseconds: 300);
 
   DocumentAnalyzerApi({
     http.Client? httpClient,
@@ -62,7 +67,7 @@ class DocumentAnalyzerApi {
   }) async {
     final id = requestId ?? _uuid.v4();
     final uri = Uri.parse('$_baseUrl/analyze');
-    final response = await _httpClient.post(
+    final response = await _postWithRetry(
       uri,
       headers: _defaultJsonHeaders(id),
       body: jsonEncode(payload.toJson()),
@@ -80,11 +85,13 @@ class DocumentAnalyzerApi {
     return AnalyzeResponse.fromJson(decoded);
   }
 
-  Future<DocumentResponse> generateDocument(DocumentRequest request,
-      {String? requestId}) async {
+  Future<DocumentResponse> generateDocument(
+    DocumentRequest request, {
+    String? requestId,
+  }) async {
     final id = requestId ?? _uuid.v4();
     final uri = Uri.parse('$_baseUrl/generate-document');
-    final response = await _httpClient.post(
+    final response = await _postWithRetry(
       uri,
       headers: _defaultJsonHeaders(id),
       body: jsonEncode(request.toJson()),
@@ -100,6 +107,38 @@ class DocumentAnalyzerApi {
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     return DocumentResponse.fromJson(decoded);
+  }
+
+  Future<http.Response> _postWithRetry(
+    Uri uri, {
+    required Map<String, String> headers,
+    required String body,
+  }) async {
+    var backoff = _initialBackoff;
+    for (var attempt = 1; attempt <= _maxAttempts; attempt += 1) {
+      try {
+        final response = await _httpClient.post(
+          uri,
+          headers: headers,
+          body: body,
+        );
+        if (response.statusCode >= 500 && attempt < _maxAttempts) {
+          await Future.delayed(backoff);
+          backoff *= 2;
+          continue;
+        }
+        return response;
+      } on SocketException {
+        if (attempt >= _maxAttempts) rethrow;
+        await Future.delayed(backoff);
+        backoff *= 2;
+      } on TimeoutException {
+        if (attempt >= _maxAttempts) rethrow;
+        await Future.delayed(backoff);
+        backoff *= 2;
+      }
+    }
+    throw StateError('Impossibile contattare il backend dopo $_maxAttempts tentativi.');
   }
 
   Map<String, String> _defaultJsonHeaders(String requestId) => {
