@@ -76,6 +76,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   bool _storeAvailable = false;
   bool _isPremium = false;
   bool _isPurchasing = false;
+  bool _isRestoringPurchases = false;
   String? _storeError;
   List<ProductDetails> _products = [];
   static const int _freeDailyLimit = 3;
@@ -1151,9 +1152,24 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
                   child: const Text('Mostra piani e prezzi'),
                 ),
                 TextButton(
-                  onPressed: _storeAvailable ? _restorePurchases : null,
+                  onPressed: _storeAvailable && !_isRestoringPurchases
+                      ? _restorePurchases
+                      : null,
                   style: TextButton.styleFrom(foregroundColor: Colors.white70),
-                  child: const Text('Ripristina acquisti'),
+                  child: _isRestoringPurchases
+                      ? const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 8),
+                            Text('Ripristino...'),
+                          ],
+                        )
+                      : const Text('Ripristina acquisti'),
                 ),
               ],
             ),
@@ -1324,9 +1340,22 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
               ),
             const SizedBox(height: 12),
             TextButton(
-              onPressed: _restorePurchases,
+              onPressed: _isRestoringPurchases ? null : _restorePurchases,
               style: TextButton.styleFrom(foregroundColor: Colors.white70),
-              child: const Text('Ripristina acquisti'),
+              child: _isRestoringPurchases
+                  ? const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 8),
+                        Text('Ripristino...'),
+                      ],
+                    )
+                  : const Text('Ripristina acquisti'),
             ),
           ],
         ),
@@ -1355,15 +1384,23 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   }
 
   Future<void> _restorePurchases() async {
-    if (!_storeAvailable) return;
+    if (!_storeAvailable || _isRestoringPurchases) return;
+    setState(() {
+      _isRestoringPurchases = true;
+      _storeError = null;
+    });
     await _iap.restorePurchases();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Ripristino acquisti avviato'),
+        content: Text('Ripristino acquisti avviato...'),
         duration: Duration(seconds: 2),
       ),
     );
+    Future.delayed(const Duration(seconds: 4), () {
+      if (!mounted) return;
+      setState(() => _isRestoringPurchases = false);
+    });
   }
 
   Future<void> _handlePurchaseUpdates(
@@ -1402,6 +1439,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     setState(() {
       _isPremium = premium;
       _isPurchasing = false;
+      _isRestoringPurchases = false;
     });
     if (!wasPremium && premium) {
       ScaffoldMessenger.of(context).showSnackBar(
