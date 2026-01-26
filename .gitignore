@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+#
+# Secret configuration templates
+.env
+.env.*
+
+# Local privacy policy repo (kept separate)
+/bureaucracy-agent-privacy/
