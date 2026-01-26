@@ -1484,41 +1484,72 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   Future<void> _showDocumentModal(DocumentResponse document) async {
     final response = await showModalBottomSheet<DocumentResponse>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF0F1117),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(document.title,
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 8),
-            Text(document.body,
-                style: const TextStyle(color: Colors.white70, fontSize: 14)),
-            const SizedBox(height: 12),
-            ...document.recommendations.map((rec) => Row(
+      builder: (context) {
+        final maxHeight = MediaQuery.of(context).size.height * 0.85;
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(Icons.check_circle_outline,
-                        size: 18, color: Colors.lightGreen),
-                    const SizedBox(width: 8),
-                    Expanded(
-                        child: Text(rec,
-                            style: const TextStyle(color: Colors.white))),
+                    Text(
+                      document.title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      document.body,
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    if (document.recommendations.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      ...document.recommendations.map(
+                        (rec) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.check_circle_outline,
+                                  size: 18, color: Colors.lightGreen),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  rec,
+                                  style:
+                                      const TextStyle(color: Colors.white70),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(document),
+                      child: const Text('Chiudi'),
+                    ),
                   ],
-                )),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(document),
-              child: const Text('Chiudi'),
+                ),
+              ),
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
     if (response != null) {
       setState(() {
