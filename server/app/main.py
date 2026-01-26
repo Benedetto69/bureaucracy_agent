@@ -156,8 +156,8 @@ FALLBACK_REFERENCES = [
 REFERENCE_TEMPLATES = [
     Reference(
         source="giurisprudenza",
-        citation="Cassazione Civile 1234/2025",
-        url="https://www.giustizia.it/cassazione/1234-2025",
+        citation="Corte di Cassazione (giurisprudenza)",
+        url="https://www.giustizia.it/giustizia/it/mg_1_8_1.page",
     ),
     Reference(
         source="policy",
@@ -172,10 +172,10 @@ RULES = [
     {
         "type": "process",
         "keywords": ["notifica", "termine", "calendarizzazione"],
-        "issue": "Notifica arrivata oltre i termini o notificata in ritardo",
+        "issue": "Possibile notifica oltre i termini (da verificare)",
         "actions": [
-            "Verifica la data di ricezione ufficiale della notifica",
-            "Prepara PEC contenente richiesta di annullamento per violazione del termine",
+            "Verifica data di infrazione, spedizione e ricezione ufficiale",
+            "Se i termini risultano superati, valuta richiesta di annullamento",
         ],
         "confidence": 0.82,
     },
@@ -224,7 +224,45 @@ def extract_entities(text: str) -> Dict[str, str]:
     year_match = re.search(r"\b(202\d)\b", lowered)
     if year_match:
         entities["year"] = year_match.group(1)
+    date_pattern = r"\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})\b"
+    for match in re.finditer(date_pattern, lowered):
+        window = lowered[max(0, match.start() - 30): match.end() + 30]
+        if any(k in window for k in ["infrazione", "violazione", "accertamento"]):
+            entities["infraction_date"] = match.group(1)
+        if any(k in window for k in ["notifica", "spedizione", "ricezione", "consegna"]):
+            entities["notification_date"] = match.group(1)
+        if any(k in window for k in ["pagamento", "scadenza", "entro"]):
+            entities.setdefault("payment_deadline", match.group(1))
+    plate_match = re.search(r"\b([a-z]{2}\s?\d{3}\s?[a-z]{2})\b", lowered, re.IGNORECASE)
+    if plate_match:
+        entities["plate"] = plate_match.group(1).replace(" ", "").upper()
+    verbale_match = re.search(
+        r"\bverbale\s*(?:n\.|num\.|numero)?\s*([a-z0-9\/\-]{5,})\b",
+        lowered,
+        re.IGNORECASE,
+    )
+    if verbale_match:
+        entities["verbale_number"] = verbale_match.group(1)
+    if any(k in lowered for k in ["polizia municipale", "polizia locale", "carabinieri", "prefettura", "comune di"]):
+        entities["issuer"] = "present"
     return entities
+
+
+def is_traffic_fine(text: str) -> bool:
+    lowered = text.lower()
+    keywords = [
+        "verbale",
+        "sanzione amministrativa",
+        "codice della strada",
+        "violazione",
+        "accertamento",
+        "targa",
+        "autovelox",
+        "polizia",
+        "giudice di pace",
+        "prefetto",
+    ]
+    return any(k in lowered for k in keywords)
 
 
 def build_summary(issues: List[AnalysisIssue], payload: AnalyzeRequest) -> Tuple[str, str]:
@@ -270,11 +308,59 @@ def build_document_text(document_request: DocumentRequest) -> DocumentResponse:
 def analyze_text(payload: AnalyzeRequest) -> List[AnalysisIssue]:
     normalized_text = payload.text.lower()
     entities = extract_entities(payload.text)
+    is_fine = is_traffic_fine(payload.text)
     matched_references = VECTOR_STORE.query(payload.text)
     if not matched_references:
         matched_references = FALLBACK_REFERENCES + REFERENCE_TEMPLATES
 
     issues: List[AnalysisIssue] = []
+    if is_fine:
+        missing_fields = []
+        if not entities.get("infraction_date"):
+            missing_fields.append("data infrazione")
+        if not entities.get("notification_date"):
+            missing_fields.append("data notifica/spedizione")
+        if not entities.get("verbale_number"):
+            missing_fields.append("numero verbale/protocollo")
+        if not entities.get("plate"):
+            missing_fields.append("targa veicolo")
+        if missing_fields:
+            issues.append(
+                AnalysisIssue(
+                    type="process",
+                    issue=(
+                        "Dati chiave della multa non rilevati: "
+                        + ", ".join(missing_fields)
+                    ),
+                    confidence=0.72,
+                    references=[
+                        Reference(
+                            source="norma",
+                            citation="art. 201, Codice della Strada (notificazione)",
+                            url="https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:codice.strada:1992-04-30;201",
+                        )
+                    ],
+                    actions=[
+                        "Carica la pagina con intestazione e numero verbale",
+                        "Verifica che le date di infrazione e notifica siano leggibili",
+                        "Se i dati sono presenti, trascrivili nei campi dell’app",
+                    ],
+                )
+            )
+        if entities.get("notification_date") and not entities.get("infraction_date"):
+            issues.append(
+                AnalysisIssue(
+                    type="process",
+                    issue="Data notifica presente ma data infrazione mancante",
+                    confidence=0.6,
+                    references=matched_references[:1],
+                    actions=[
+                        "Individua la data dell’infrazione sul verbale",
+                        "Confronta i tempi tra infrazione e notifica",
+                    ],
+                )
+            )
+
     for rule in RULES:
         if any(keyword in normalized_text for keyword in rule["keywords"]):
             confidence = rule["confidence"]
