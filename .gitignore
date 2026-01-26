@@ -47,6 +47,7 @@ app.*.map.json
 # Secret configuration templates
 .env
 .env.*
+!.env.template
 
 # Local privacy policy repo (kept separate)
 /bureaucracy-agent-privacy/
