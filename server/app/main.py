@@ -25,6 +25,38 @@ DOTENV_PATH = BASE_DIR.parent / ".env"
 load_dotenv(DOTENV_PATH)
 
 API_TOKEN = os.getenv("BACKEND_API_TOKEN", "changeme")
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173"
+).split(",")
+
+# Rate limiting configuration
+RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "50"))
+_rate_limit_store: Dict[str, Dict[str, Any]] = {}
+
+
+def _get_rate_limit_key(user_id: str) -> str:
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return f"{user_id}:{today}"
+
+
+def check_rate_limit(user_id: str) -> None:
+    key = _get_rate_limit_key(user_id)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Clean old entries
+    keys_to_remove = [k for k in _rate_limit_store if not k.endswith(today)]
+    for k in keys_to_remove:
+        del _rate_limit_store[k]
+    # Check current user
+    if key not in _rate_limit_store:
+        _rate_limit_store[key] = {"count": 0}
+    if _rate_limit_store[key]["count"] >= RATE_LIMIT_MAX:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Limite giornaliero di {RATE_LIMIT_MAX} richieste raggiunto"
+        )
+    _rate_limit_store[key]["count"] += 1
+
 
 app = FastAPI(
     title="Bureaucracy Agent Brain",
@@ -36,7 +68,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
@@ -161,14 +193,17 @@ RULES = [
 
 
 def extract_entities(text: str) -> Dict[str, str]:
+    import re
     lowered = text.lower()
     entities: Dict[str, str] = {}
     if "art." in lowered:
         start = lowered.find("art.")
         end = lowered.find(" ", start + 4)
         entities["article"] = lowered[start:end].strip(". ,") if end != -1 else lowered[start:].strip(". ,")
-    if "202" in lowered:
-        entities["year"] = "2026"
+    # Extract year dynamically (202X pattern)
+    year_match = re.search(r"\b(202\d)\b", lowered)
+    if year_match:
+        entities["year"] = year_match.group(1)
     return entities
 
 
@@ -204,7 +239,6 @@ def build_document_text(document_request: DocumentRequest) -> DocumentResponse:
         f"{intro}\n\nAzioni suggerite:\n{actions_block}\n\nRiferimenti normativi:\n{references_block}"
         f"\n\nProssimo passo consigliato: {document_request.summary_next_step}\n"
     )
-    recommendations = document_request.references
     return DocumentResponse(
         document_id=document_request.document_id,
         title=title,
@@ -304,6 +338,9 @@ async def analyze(
     request_id: str = Depends(require_request_id),
     token: str = Depends(verify_token),
 ):
+    # Apply rate limiting per user
+    check_rate_limit(payload.metadata.user_id)
+
     logger.info(
         json.dumps(
             {

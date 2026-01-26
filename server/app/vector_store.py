@@ -1,12 +1,15 @@
 import json
+import logging
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import List, Tuple
 
 from .schemas import Reference
 
 STORE_FILE = Path(__file__).resolve().parent / "data" / "reference_store.json"
+
+logger = logging.getLogger("bureaucracy_agent_brain")
 
 
 def _normalize(text: str) -> List[str]:
@@ -18,6 +21,10 @@ class VectorStore:
     def __init__(self, records_file: Path = STORE_FILE):
         self.records = []
         if not records_file.exists():
+            logger.warning(
+                f"VectorStore: file {records_file} non trovato. "
+                "L'analisi funzionerà con riferimenti di fallback."
+            )
             return
         raw = json.loads(records_file.read_text(encoding="utf-8"))
         for entry in raw:
