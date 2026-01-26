@@ -3,7 +3,7 @@
 Use this runbook to handle GDPR data requests.
 
 ## 1. Intake
-- Channel: privacy@tuodominio.com (replace with real email before launch).
+- Channel: privacy@benedettoriba.com (replace with real email before launch).
 - Acknowledge receipt within 7 days.
 
 ## 2. Verify request

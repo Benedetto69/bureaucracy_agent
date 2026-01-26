@@ -48,6 +48,6 @@ Nell'app e' disponibile una sezione "Gestione dati" che permette di:
 
 ## Contatti e richieste privacy (DSAR)
 Per richieste di accesso/cancellazione/portabilita' scrivi a:
-- privacy@tuodominio.com
+- privacy@benedettoriba.com
 
 Nota: sostituisci l'indirizzo con un contatto reale prima della pubblicazione.
