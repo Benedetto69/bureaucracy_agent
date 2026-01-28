@@ -7,10 +7,12 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'models/document_history.dart';
 import 'screens/entry_page.dart';
 import 'screens/privacy_page.dart';
+import 'screens/terms_page.dart';
 import 'services/api_service.dart';
 import 'services/document_analyzer_models.dart';
 import 'services/history_storage.dart';
@@ -35,6 +37,7 @@ class BureaucracyAgentApp extends StatelessWidget {
       routes: {
         '/analyzer': (_) => const SchermataRisoluzione(),
         '/privacy': (_) => const PrivacyPage(),
+        '/terms': (_) => const TermsPage(),
       },
     );
   }
@@ -1300,86 +1303,213 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     return parts.join(' • ');
   }
 
+  static const String _privacyPolicyUrl = 'https://benedetto69.github.io/bureaucracy_agent/privacy.html';
+  static const String _termsOfServiceUrl = 'https://benedetto69.github.io/bureaucracy_agent/terms.html';
+  static const String _manageSubscriptionsUrl = 'https://apps.apple.com/account/subscriptions';
+
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   Future<void> _showPurchaseOptions() async {
     final monthly = _findProduct('com.benedettoriba.bureaucracy.premium.monthly');
     final annual = _findProduct('com.benedettoriba.bureaucracy.premium.annual');
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF0F1117),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Scegli il piano',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Eventuali prove gratuite vengono mostrate al checkout.',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-            if (_storeError != null)
-              Text(
-                _storeError!,
-                style: const TextStyle(color: Colors.redAccent, fontSize: 12),
-              ),
-            if (monthly != null)
-              ListTile(
-                title: const Text('Mensile'),
-                subtitle: Text(monthly.description),
-                trailing: Text(monthly.price),
-                onTap: _isPurchasing
-                    ? null
-                    : () {
-                        Navigator.of(context).pop();
-                        _buy(monthly);
-                      },
-              ),
-            if (annual != null)
-              ListTile(
-                title: const Text('Annuale'),
-                subtitle: Text(annual.description),
-                trailing: Text(annual.price),
-                onTap: _isPurchasing
-                    ? null
-                    : () {
-                        Navigator.of(context).pop();
-                        _buy(annual);
-                      },
-              ),
-            if (monthly == null && annual == null)
+      builder: (context) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               const Text(
-                'Prodotti non disponibili al momento.',
-                style: TextStyle(color: Colors.white54, fontSize: 12),
+                'Scegli il tuo piano Premium',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: _isRestoringPurchases ? null : _restorePurchases,
-              style: TextButton.styleFrom(foregroundColor: Colors.white70),
-              child: _isRestoringPurchases
-                  ? const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: 8),
-                        Text('Ripristino...'),
-                      ],
-                    )
-                  : const Text('Ripristina acquisti'),
+              const SizedBox(height: 16),
+              if (_storeError != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _storeError!,
+                    style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                  ),
+                ),
+              if (monthly != null)
+                _buildSubscriptionTile(
+                  title: 'Mensile',
+                  product: monthly,
+                  subtitle: 'Analisi illimitate',
+                  renewalInfo: 'Si rinnova automaticamente ogni mese',
+                ),
+              if (annual != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: _buildSubscriptionTile(
+                    title: 'Annuale',
+                    product: annual,
+                    subtitle: 'Analisi illimitate • Risparmia',
+                    renewalInfo: 'Si rinnova automaticamente ogni anno',
+                    highlighted: true,
+                  ),
+                ),
+              if (monthly == null && annual == null)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Text(
+                    'Prodotti non disponibili al momento.',
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              const SizedBox(height: 16),
+              // Informativa rinnovo automatico (richiesta Apple)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'L\'abbonamento si rinnova automaticamente alla scadenza, salvo disdetta almeno 24 ore prima. '
+                  'Il pagamento viene addebitato sul tuo account iTunes alla conferma dell\'acquisto. '
+                  'Puoi gestire o disattivare il rinnovo automatico nelle impostazioni del tuo account App Store.',
+                  style: TextStyle(color: Colors.white60, fontSize: 11, height: 1.4),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Link richiesti da Apple
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: () => _launchUrl(_termsOfServiceUrl),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white54,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: const Text('Termini di Servizio', style: TextStyle(fontSize: 11)),
+                  ),
+                  const Text('•', style: TextStyle(color: Colors.white38)),
+                  TextButton(
+                    onPressed: () => _launchUrl(_privacyPolicyUrl),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white54,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: const Text('Privacy Policy', style: TextStyle(fontSize: 11)),
+                  ),
+                ],
+              ),
+              TextButton(
+                onPressed: () => _launchUrl(_manageSubscriptionsUrl),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white54,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: const Text('Gestisci abbonamenti', style: TextStyle(fontSize: 11)),
+              ),
+              const Divider(color: Colors.white24),
+              TextButton(
+                onPressed: _isRestoringPurchases ? null : _restorePurchases,
+                style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                child: _isRestoringPurchases
+                    ? const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 8),
+                          Text('Ripristino in corso...'),
+                        ],
+                      )
+                    : const Text('Ripristina acquisti precedenti'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSubscriptionTile({
+    required String title,
+    required ProductDetails product,
+    required String subtitle,
+    required String renewalInfo,
+    bool highlighted = false,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: highlighted ? Colors.greenAccent.withValues(alpha: 0.5) : Colors.white24,
+          width: highlighted ? 2 : 1,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        color: highlighted ? Colors.greenAccent.withValues(alpha: 0.05) : null,
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        title: Row(
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+            if (highlighted)
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.greenAccent.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'Consigliato',
+                  style: TextStyle(fontSize: 10, color: Colors.greenAccent),
+                ),
+              ),
+          ],
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+            const SizedBox(height: 2),
+            Text(renewalInfo, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+          ],
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              product.price,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            Text(
+              title == 'Mensile' ? '/mese' : '/anno',
+              style: const TextStyle(color: Colors.white54, fontSize: 11),
             ),
           ],
         ),
+        onTap: _isPurchasing
+            ? null
+            : () {
+                Navigator.of(context).pop();
+                _buy(product);
+              },
       ),
     );
   }
@@ -1473,7 +1603,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   }
 
   Future<void> _generaDocumento() async {
-    if (_issues.isEmpty) return;
+    if (_issues.isEmpty || _api == null) return;
     setState(() => _isGeneratingDocument = true);
     final issue = _issues.first;
     final documentId =
@@ -1487,7 +1617,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
       summaryNextStep: _summary?.nextStep ?? _esitoIA,
     );
     try {
-      final document = await _api.generateDocument(request);
+      final document = await _api!.generateDocument(request);
       await _showDocumentModal(document);
     } on ApiException catch (error) {
       setState(() {
