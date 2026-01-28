@@ -1303,8 +1303,8 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     return parts.join(' • ');
   }
 
-  static const String _privacyPolicyUrl = 'https://benedetto69.github.io/bureaucracy_agent/privacy.html';
-  static const String _termsOfServiceUrl = 'https://benedetto69.github.io/bureaucracy_agent/terms.html';
+  static const String _privacyPolicyUrl = 'https://privacy.benedettoriba.com/privacy.html';
+  static const String _termsOfServiceUrl = 'https://privacy.benedettoriba.com/terms.html';
   static const String _manageSubscriptionsUrl = 'https://apps.apple.com/account/subscriptions';
 
   Future<void> _launchUrl(String url) async {
