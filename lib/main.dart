@@ -48,7 +48,8 @@ class SchermataRisoluzione extends StatefulWidget {
 }
 
 class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
-  final DocumentAnalyzerApi _api = DocumentAnalyzerApi();
+  DocumentAnalyzerApi? _api;
+  bool _apiReady = false;
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _userIdController =
       TextEditingController(text: 'pratica-000');
@@ -136,6 +137,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   @override
   void initState() {
     super.initState();
+    _initializeApi();
     _initializeHistory();
     _initializeStore();
     _initializeUsageLimits();
@@ -149,6 +151,18 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     _jurisdictionController.dispose();
     _amountController.dispose();
     super.dispose();
+  }
+
+  void _initializeApi() {
+    try {
+      _api = DocumentAnalyzerApi();
+      _apiReady = true;
+    } catch (error) {
+      _api = null;
+      _apiReady = false;
+      _errorMessage =
+          'Configurazione backend mancante o non valida. Contatta il supporto.';
+    }
   }
 
   Future<void> _initializeHistory() async {
@@ -255,6 +269,13 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   static const int _minTextLength = 10;
 
   Future<void> _avviaAnalisi() async {
+    if (!_apiReady || _api == null) {
+      setState(() {
+        _errorMessage =
+            'Backend non configurato: impossibile avviare l’analisi.';
+      });
+      return;
+    }
     final description = _descriptionController.text.trim();
     final amount = double.tryParse(_amountController.text.replaceAll(',', '.'));
     final userId = _userIdController.text.trim();
@@ -331,7 +352,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     );
 
     try {
-      final response = await _api.analyzeDocument(payload);
+      final response = await _api!.analyzeDocument(payload);
       setState(() {
         _issues = response.results;
         _summary = response.summary;
