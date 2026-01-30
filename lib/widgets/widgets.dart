@@ -1,3 +1,4 @@
+export 'consent_dialog.dart';
 export 'decision_checkpoint.dart';
 export 'disclaimer_banner.dart';
 export 'document_history_list.dart';

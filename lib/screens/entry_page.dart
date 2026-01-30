@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../widgets/disclaimer_banner.dart';
+
 const _consentKey = 'privacy_consent_accepted';
 const _privacyPolicyUrl = 'https://privacy.benedettoriba.com/privacy.html';
 const _termsOfServiceUrl = 'https://privacy.benedettoriba.com/terms.html';
@@ -216,7 +218,9 @@ class _EntryPageState extends State<EntryPage> {
                     _EntryHero(
                         key: const ValueKey('entry_hero'),
                         onOpenAnalyzer: () => _openAnalyzer(context)),
-                    const SizedBox(height: 36),
+                    const SizedBox(height: 24),
+                    const _LegalDisclaimerBanner(),
+                    const SizedBox(height: 28),
                     SectionTitle(
                       key: const ValueKey('section_perche'),
                       label: 'Perche usarlo',
@@ -773,6 +777,20 @@ class _EntryBackground extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _LegalDisclaimerBanner extends StatelessWidget {
+  const _LegalDisclaimerBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DisclaimerBanner(
+      message: 'Bureaucracy ti aiuta a valutare se contestare una multa. '
+          'Non forniamo consulenza legale e le analisi sono solo indicative.',
+      type: DisclaimerType.info,
+      isCompact: true,
     );
   }
 }

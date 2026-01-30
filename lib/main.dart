@@ -145,8 +145,11 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   static const int _maxHistoryEntries = 50;
   static const String _analysisCountKey = 'analysis_count';
   static const String _analysisCountDateKey = 'analysis_count_date';
+  static const String _consentGivenKey = 'analysis_consent_given';
+  static const String _consentDateKey = 'analysis_consent_date';
   int _analysisCountToday = 0;
   String _analysisCountDate = '';
+  bool _hasGivenConsent = false;
   static const _panelGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
@@ -203,6 +206,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     _initializeHistory();
     _initializeStore();
     _initializeUsageLimits();
+    _initializeConsent();
   }
 
   @override
@@ -262,6 +266,67 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     } catch (error) {
       debugPrint('Impossibile inizializzare limite giornaliero: $error');
     }
+  }
+
+  Future<void> _initializeConsent() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final hasConsent = prefs.getBool(_consentGivenKey) ?? false;
+      final consentDate = prefs.getString(_consentDateKey);
+
+      // Consent expires after 90 days
+      if (hasConsent && consentDate != null) {
+        final consentDateTime = DateTime.tryParse(consentDate);
+        if (consentDateTime != null) {
+          final daysSinceConsent = DateTime.now().difference(consentDateTime).inDays;
+          if (daysSinceConsent > 90) {
+            // Consent expired, reset
+            await prefs.setBool(_consentGivenKey, false);
+            if (!mounted) return;
+            setState(() => _hasGivenConsent = false);
+            return;
+          }
+        }
+      }
+
+      if (!mounted) return;
+      setState(() => _hasGivenConsent = hasConsent);
+    } catch (error) {
+      debugPrint('Impossibile inizializzare consenso: $error');
+    }
+  }
+
+  Future<void> _saveConsent() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_consentGivenKey, true);
+      await prefs.setString(_consentDateKey, DateTime.now().toIso8601String());
+      if (!mounted) return;
+      setState(() => _hasGivenConsent = true);
+    } catch (error) {
+      debugPrint('Impossibile salvare consenso: $error');
+    }
+  }
+
+  Future<bool> _showConsentDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => ConsentDialog(
+        onAccept: () {
+          Navigator.of(context).pop(true);
+        },
+        onDecline: () {
+          Navigator.of(context).pop(false);
+        },
+      ),
+    );
+
+    if (result == true) {
+      await _saveConsent();
+      return true;
+    }
+    return false;
   }
 
   String _formatDay(DateTime date) {
@@ -334,7 +399,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     if (!_apiReady || _api == null) {
       setState(() {
         _errorMessage =
-            'Backend non configurato: impossibile avviare l’analisi.';
+            'Backend non configurato: impossibile avviare l\'analisi.';
       });
       return;
     }
@@ -376,6 +441,12 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     if (jurisdiction.isEmpty || jurisdiction.length > 50) {
       setState(() => _errorMessage = 'Giurisdizione non valida (1-50 caratteri).');
       return;
+    }
+
+    // Check consent before proceeding
+    if (!_hasGivenConsent) {
+      final consented = await _showConsentDialog();
+      if (!consented) return;
     }
 
     final todayKey = _formatDay(DateTime.now());
@@ -1933,6 +2004,11 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
 
   Future<void> _generaDocumento() async {
     if (_issues.isEmpty || _api == null) return;
+
+    // Show decision checkpoint before generating
+    final confirmed = await _showDecisionCheckpoint();
+    if (!confirmed) return;
+
     setState(() => _isGeneratingDocument = true);
     final issue = _issues.first;
     final documentId =
@@ -1959,6 +2035,60 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     } finally {
       setState(() => _isGeneratingDocument = false);
     }
+  }
+
+  Future<bool> _showDecisionCheckpoint() async {
+    final checkpointItems = [
+      const CheckpointItem(
+        id: 'understand_indicative',
+        title: 'L\'analisi e\' solo indicativa',
+        description: 'I risultati non garantiscono il successo del ricorso',
+        isRequired: true,
+      ),
+      const CheckpointItem(
+        id: 'my_responsibility',
+        title: 'La decisione finale e\' mia',
+        description: 'L\'app non si sostituisce al mio giudizio',
+        isRequired: true,
+      ),
+      const CheckpointItem(
+        id: 'verify_data',
+        title: 'Ho verificato i dati inseriti',
+        description: 'Importo, date e informazioni sono corretti',
+        isRequired: true,
+      ),
+      const CheckpointItem(
+        id: 'consider_lawyer',
+        title: 'Per casi complessi consultero\' un avvocato',
+        description: 'Specialmente per importi elevati o situazioni particolari',
+        isRequired: false,
+      ),
+    ];
+
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        margin: const EdgeInsets.only(top: 60),
+        decoration: const BoxDecoration(
+          color: Color(0xFF0F1117),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: DecisionCheckpoint(
+            title: 'Prima di generare la bozza',
+            subtitle: 'Conferma di aver compreso questi punti',
+            items: checkpointItems,
+            onProceed: () => Navigator.of(context).pop(true),
+            onCancel: () => Navigator.of(context).pop(false),
+          ),
+        ),
+      ),
+    );
+
+    return result ?? false;
   }
 
   Future<void> _showDocumentModal(analyzer_models.DocumentResponse document) async {
