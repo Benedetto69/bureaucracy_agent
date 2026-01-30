@@ -1,7 +1,7 @@
 name: bureaucracy_agent
 description: "AI Agent per la risoluzione di problemi burocratici."
 publish_to: 'none'
-version: 1.1.0+10
+version: 1.2.0+11
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -16,6 +16,11 @@ dependencies:
   image_picker: ^0.8.7+5
   shared_preferences: ^2.2.0
   url_launcher: ^6.2.1        # Per link esterni (Privacy, Terms, Gestione abbonamento)
+  share_plus: ^7.2.2          # Condivisione nativa (email, WhatsApp, etc.)
+  pdf: ^3.10.8                # Generazione PDF
+  printing: ^5.12.0           # Preview/stampa/condividi PDF
+  path_provider: ^2.1.2       # Accesso directory temporanea
+  intl: ^0.19.0               # Formattazione date
 
 dev_dependencies:
   flutter_test:
