@@ -22,6 +22,7 @@ import 'services/ocr_service.dart';
 import 'services/pdf_service.dart';
 import 'services/share_service.dart';
 import 'theme/app_theme.dart';
+import 'utils/image_validator.dart';
 import 'widgets/widgets.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -542,9 +543,22 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
 
   Future<void> _pickDocument(ImageSource source) async {
     try {
-      final XFile? file =
-          await _picker.pickImage(source: source, imageQuality: 75);
+      final XFile? file = await _picker.pickImage(
+        source: source,
+        imageQuality: 75,
+        maxWidth: 2000,
+        maxHeight: 2000,
+      );
       if (file == null) return;
+
+      // Validate image format via magic bytes
+      final bytes = await file.readAsBytes();
+      final validation = ImageValidator.validate(bytes);
+      if (!validation.isValid) {
+        setState(() => _errorMessage = validation.error);
+        return;
+      }
+
       setState(() {
         _isProcessingImage = true;
         _pickedImage = File(file.path);

@@ -15,6 +15,7 @@ dependencies:
   uuid: ^4.5.2
   image_picker: ^0.8.7+5
   shared_preferences: ^2.2.0
+  flutter_secure_storage: ^9.0.0  # Storage cifrato per dati sensibili
   url_launcher: ^6.2.1        # Per link esterni (Privacy, Terms, Gestione abbonamento)
   share_plus: ^7.2.2          # Condivisione nativa (email, WhatsApp, etc.)
   pdf: ^3.10.8                # Generazione PDF
