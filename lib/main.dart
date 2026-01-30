@@ -697,101 +697,191 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
       ),
     ];
 
+    final completedCount = steps.where((s) => s.complete).length;
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF10141B),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.timeline, color: Colors.greenAccent),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Percorso guidato',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: steps.map(_buildStepTile).toList(),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF151C26), Color(0xFF0D1218)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.primary.withAlpha(30)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(40),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildStepTile(_GuidedStepData step) {
-    final statusText = step.complete ? 'Completo' : 'In sospeso';
-    return Container(
-      width: 160,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: step.complete
-              ? [Colors.greenAccent.shade100, Colors.greenAccent.shade400]
-              : [Colors.blueGrey.shade900, Colors.blueGrey.shade800],
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: step.complete ? Colors.greenAccent : Colors.white10,
-        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              CircleAvatar(
-                radius: 12,
-                backgroundColor:
-                    step.complete ? Colors.green : Colors.blueGrey.shade700,
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withAlpha(20),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.route, color: AppColors.primary, size: 22),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
                 child: Text(
-                  step.number,
-                  style: const TextStyle(
+                  'Percorso guidato',
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 17,
+                    letterSpacing: 0.3,
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
-              Icon(step.icon, size: 18, color: Colors.white70),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withAlpha(20),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '$completedCount/${steps.length}',
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 18),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final cardWidth = (constraints.maxWidth - 12) / 2;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: steps.map((step) => _buildStepTile(step, cardWidth)).toList(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepTile(_GuidedStepData step, double width) {
+    final isComplete = step.complete;
+
+    return Container(
+      width: width,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isComplete
+              ? [AppColors.primary.withAlpha(180), AppColors.primary]
+              : [const Color(0xFF1E2636), const Color(0xFF171D28)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isComplete ? AppColors.primary.withAlpha(100) : const Color(0xFF2A3444),
+          width: isComplete ? 1.5 : 1,
+        ),
+        boxShadow: isComplete
+            ? [
+                BoxShadow(
+                  color: AppColors.primary.withAlpha(40),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: isComplete
+                      ? Colors.white.withAlpha(40)
+                      : AppColors.primary.withAlpha(30),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isComplete
+                        ? Colors.white.withAlpha(60)
+                        : AppColors.primary.withAlpha(60),
+                  ),
+                ),
+                child: Center(
+                  child: isComplete
+                      ? const Icon(Icons.check, size: 16, color: Colors.white)
+                      : Text(
+                          step.number,
+                          style: const TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                step.icon,
+                size: 18,
+                color: isComplete ? Colors.white.withAlpha(200) : AppColors.textTertiary,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Text(
             step.title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
+            style: TextStyle(
+              color: isComplete ? Colors.white : AppColors.textPrimary,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              height: 1.2,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             step.subtitle,
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            statusText,
             style: TextStyle(
-              color: step.complete ? Colors.white : Colors.yellowAccent,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+              color: isComplete ? Colors.white.withAlpha(180) : AppColors.textTertiary,
+              fontSize: 11,
+              height: 1.3,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isComplete
+                  ? Colors.white.withAlpha(30)
+                  : AppColors.warning.withAlpha(20),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              isComplete ? 'Completo' : 'In sospeso',
+              style: TextStyle(
+                color: isComplete ? Colors.white : AppColors.warning,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.3,
+              ),
             ),
           ),
         ],
@@ -1390,19 +1480,27 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
             ),
           ),
           if (!isActive)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              spacing: 8,
+              runSpacing: 4,
               children: [
                 TextButton(
                   onPressed: _storeAvailable ? _showPurchaseOptions : null,
-                  style: TextButton.styleFrom(foregroundColor: Colors.greenAccent),
-                  child: const Text('Mostra piani e prezzi'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.greenAccent,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  child: const Text('Mostra piani e prezzi', style: TextStyle(fontSize: 12)),
                 ),
                 TextButton(
                   onPressed: _storeAvailable && !_isRestoringPurchases
                       ? _restorePurchases
                       : null,
-                  style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
                   child: _isRestoringPurchases
                       ? const Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1412,11 +1510,11 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
                               height: 14,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             ),
-                            SizedBox(width: 8),
-                            Text('Ripristino...'),
+                            SizedBox(width: 6),
+                            Text('Ripristino...', style: TextStyle(fontSize: 12)),
                           ],
                         )
-                      : const Text('Ripristina acquisti'),
+                      : const Text('Ripristina acquisti', style: TextStyle(fontSize: 12)),
                 ),
               ],
             ),
