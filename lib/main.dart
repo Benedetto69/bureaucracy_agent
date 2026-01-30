@@ -576,6 +576,14 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
                 _buildGuidedSteps(),
                 const SizedBox(height: 16),
                 RiskStats(issues: _issues),
+                if (_summary != null && _issues.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  _buildVerdictSection(),
+                  const SizedBox(height: 12),
+                  _buildEconomicSection(),
+                  const SizedBox(height: 12),
+                  _buildQuickOpinionSection(),
+                ],
                 const SizedBox(height: 18),
                 _buildPremiumPerksCard(),
                 const SizedBox(height: 16),
@@ -2311,5 +2319,143 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
 
   String _formattedIssueDate() {
     return _issueDate.toIso8601String().split('T').first;
+  }
+
+  Widget _buildVerdictSection() {
+    if (_summary == null || _issues.isEmpty) return const SizedBox.shrink();
+
+    // Determine verdict type based on risk level
+    final verdictType = switch (_summary!.riskLevel) {
+      analyzer_models.RiskLevel.low => VerdictType.contest,
+      analyzer_models.RiskLevel.medium => VerdictType.evaluate,
+      analyzer_models.RiskLevel.high => VerdictType.pay,
+    };
+
+    // Calculate success probability based on issues and risk
+    final baseProb = switch (_summary!.riskLevel) {
+      analyzer_models.RiskLevel.low => 0.75,
+      analyzer_models.RiskLevel.medium => 0.50,
+      analyzer_models.RiskLevel.high => 0.25,
+    };
+    final avgConfidence = _issues.isEmpty
+        ? 0.5
+        : _issues.map((i) => i.confidence).reduce((a, b) => a + b) / _issues.length;
+    final successProb = (baseProb * 0.6 + avgConfidence * 0.4).clamp(0.1, 0.9);
+
+    // Build risks and benefits from issues
+    final benefits = <VerdictRisk>[];
+    final risks = <VerdictRisk>[];
+
+    for (final issue in _issues.take(2)) {
+      if (issue.confidence > 0.7) {
+        benefits.add(VerdictRisk(
+          title: 'Vizio ${issue.type.name}',
+          description: issue.issue.length > 80
+              ? '${issue.issue.substring(0, 80)}...'
+              : issue.issue,
+          isPositive: true,
+        ));
+      }
+    }
+
+    if (_summary!.riskLevel == analyzer_models.RiskLevel.high) {
+      risks.add(const VerdictRisk(
+        title: 'Rischio elevato',
+        description: 'Le probabilita di successo sono basse. Valuta attentamente.',
+      ));
+    }
+    if (_summary!.riskLevel == analyzer_models.RiskLevel.medium) {
+      risks.add(const VerdictRisk(
+        title: 'Esito incerto',
+        description: 'Il risultato dipende da fattori non prevedibili.',
+      ));
+    }
+
+    return VerdictCard(
+      config: VerdictConfig(
+        type: verdictType,
+        successProbability: successProb,
+        reasoning: _summary!.nextStep,
+        benefits: benefits,
+        risks: risks,
+      ),
+      onContestPressed: _issues.isNotEmpty ? _generaDocumento : null,
+      onPayPressed: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Puoi pagare la multa entro i termini per ottenere lo sconto.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEconomicSection() {
+    if (_summary == null) return const SizedBox.shrink();
+
+    final amount = double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
+    if (amount <= 0) return const SizedBox.shrink();
+
+    // Calculate economic analysis
+    final reducedAmount = amount * 0.7; // 30% discount if paid early
+    final estimatedLegalCosts = amount > 200 ? 50.0 : 30.0;
+    const estimatedTimeCost = 3.0; // hours
+    final estimatedDays = _summary!.riskLevel == analyzer_models.RiskLevel.low ? 30 : 60;
+
+    final baseProb = switch (_summary!.riskLevel) {
+      analyzer_models.RiskLevel.low => 0.70,
+      analyzer_models.RiskLevel.medium => 0.45,
+      analyzer_models.RiskLevel.high => 0.20,
+    };
+
+    return EconomicFilter(
+      analysis: EconomicAnalysis(
+        fineAmount: amount,
+        reducedAmount: reducedAmount,
+        estimatedLegalCosts: estimatedLegalCosts,
+        estimatedTimeCost: estimatedTimeCost,
+        hourlyRate: 15.0,
+        estimatedDays: estimatedDays,
+        successProbability: baseProb,
+      ),
+    );
+  }
+
+  Widget _buildQuickOpinionSection() {
+    if (_summary == null || _issues.isEmpty) return const SizedBox.shrink();
+
+    // Determine sentiment based on risk level
+    final sentiment = switch (_summary!.riskLevel) {
+      analyzer_models.RiskLevel.low => OpinionSentiment.positive,
+      analyzer_models.RiskLevel.medium => OpinionSentiment.neutral,
+      analyzer_models.RiskLevel.high => OpinionSentiment.negative,
+    };
+
+    // Build quick opinion text
+    final issueCount = _issues.length;
+    final mainIssue = _issues.first;
+    final opinionText = 'L\'analisi ha rilevato $issueCount ${issueCount == 1 ? "problema" : "problemi"} '
+        'nella documentazione. Il principale riguarda un vizio di tipo ${mainIssue.type.name}. '
+        '${_summary!.nextStep}';
+
+    final bottomLine = switch (_summary!.riskLevel) {
+      analyzer_models.RiskLevel.low => 'Ci sono buone basi per contestare.',
+      analyzer_models.RiskLevel.medium => 'La situazione richiede una valutazione approfondita.',
+      analyzer_models.RiskLevel.high => 'Contestare potrebbe non essere la scelta migliore.',
+    };
+
+    final confidence = _issues.map((i) => i.confidence).reduce((a, b) => a + b) / _issues.length;
+
+    return QuickOpinion(
+      data: QuickOpinionData(
+        opinion: opinionText,
+        sentiment: sentiment,
+        bottomLine: bottomLine,
+        confidence: confidence,
+      ),
+      showExpandButton: false,
+      onCopy: () {},
+    );
   }
 }
