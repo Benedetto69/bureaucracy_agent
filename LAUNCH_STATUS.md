@@ -88,7 +88,7 @@
 ---
 
 ## Commit History
-- `[PENDING]` - Add security features: secure storage, MIME validation, App Store assets
+- `93f4158` - Add App Store compliance and security features
 - `53a49ff` - Add GDPR consent flow and decision checkpoint
 - `064daec` - Add UX decision-support widgets for fine analysis
 - `c92acc1` - Redesign guided path UI and fix premium overflow
