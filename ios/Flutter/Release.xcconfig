@@ -1,7 +1,7 @@
 #include "Generated.xcconfig"
 #include "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
 
-# Enable Dart obfuscation when building release binaries.
+// Enable Dart obfuscation when building release binaries.
 DART_OBFUSCATION = true
-# Store split debug info under the shared folder for symbolication.
+// Store split debug info under the shared folder for symbolication.
 SPLIT_DEBUG_INFO = $(PROJECT_DIR)/../debug-info/ios
