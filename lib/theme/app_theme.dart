@@ -86,7 +86,7 @@ class AppTheme {
   static ThemeData build() {
     const fontFamily = 'SF Pro Display';
 
-    final textTheme = const TextTheme(
+    const textTheme = TextTheme(
       displayLarge: TextStyle(
         fontSize: 32,
         fontWeight: FontWeight.w700,

@@ -23,7 +23,7 @@ class IssueCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
@@ -254,19 +254,19 @@ class IssueCard extends StatelessWidget {
   _IssueTypeConfig _getTypeConfig(IssueType type) {
     switch (type) {
       case IssueType.process:
-        return _IssueTypeConfig(
+        return const _IssueTypeConfig(
           label: 'Procedura',
           icon: Icons.timeline_outlined,
           color: AppColors.info,
         );
       case IssueType.formality:
-        return _IssueTypeConfig(
+        return const _IssueTypeConfig(
           label: 'Formalita',
           icon: Icons.description_outlined,
           color: AppColors.warning,
         );
       case IssueType.substance:
-        return _IssueTypeConfig(
+        return const _IssueTypeConfig(
           label: 'Sostanza',
           icon: Icons.gavel_outlined,
           color: AppColors.error,
@@ -415,17 +415,17 @@ class _ReferenceChip extends StatelessWidget {
   _SourceConfig _getSourceConfig(ReferenceSource source) {
     switch (source) {
       case ReferenceSource.norma:
-        return _SourceConfig(
+        return const _SourceConfig(
           icon: Icons.account_balance_outlined,
           color: AppColors.info,
         );
       case ReferenceSource.giurisprudenza:
-        return _SourceConfig(
+        return const _SourceConfig(
           icon: Icons.gavel_outlined,
           color: AppColors.accent,
         );
       case ReferenceSource.policy:
-        return _SourceConfig(
+        return const _SourceConfig(
           icon: Icons.policy_outlined,
           color: AppColors.warning,
         );
