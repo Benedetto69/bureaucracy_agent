@@ -272,15 +272,3 @@ class DocumentResponse {
         'recommendations': recommendations,
       };
 }
-
-class ApiException implements Exception {
-  final String message;
-  final int? statusCode;
-  final String? body;
-
-  ApiException({required this.message, this.statusCode, this.body});
-
-  @override
-  String toString() =>
-      'ApiException($statusCode): $message${body == null ? '' : ' | $body'}';
-}

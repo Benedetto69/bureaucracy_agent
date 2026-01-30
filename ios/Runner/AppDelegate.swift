@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import Vision
+import CryptoKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -9,41 +10,95 @@ import Vision
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
-
-    // On-device OCR via Apple's Vision framework.
-    //
-    // Flutter side calls MethodChannel('bureaucracy_agent/ocr') with method 'recognizeText'
-    // and argument { path: <file path> }.
     if let controller = window?.rootViewController as? FlutterViewController {
-      let channel = FlutterMethodChannel(
-        name: "bureaucracy_agent/ocr",
-        binaryMessenger: controller.binaryMessenger
-      )
-      channel.setMethodCallHandler { call, result in
-        guard call.method == "recognizeText" else {
-          result(FlutterMethodNotImplemented)
-          return
-        }
-        guard
-          let args = call.arguments as? [String: Any],
-          let path = args["path"] as? String,
-          let image = UIImage(contentsOfFile: path)
-        else {
-          result(FlutterError(code: "bad_args", message: "Missing/invalid image path", details: nil))
-          return
-        }
+      setupOcrChannel(controller: controller)
+      setupSecurityChannel(controller: controller)
+    }
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
 
-        self.recognizeText(in: image) { text, error in
-          if let error = error {
-            result(FlutterError(code: "ocr_failed", message: error.localizedDescription, details: nil))
-            return
-          }
-          result(text ?? "")
+  private func setupOcrChannel(controller: FlutterViewController) {
+    let channel = FlutterMethodChannel(
+      name: "bureaucracy_agent/ocr",
+      binaryMessenger: controller.binaryMessenger
+    )
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "recognizeText" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      guard
+        let args = call.arguments as? [String: Any],
+        let path = args["path"] as? String,
+        let image = UIImage(contentsOfFile: path)
+      else {
+        result(FlutterError(code: "bad_args", message: "Missing/invalid image path", details: nil))
+        return
+      }
+
+      self.recognizeText(in: image) { text, error in
+        if let error = error {
+          result(FlutterError(code: "ocr_failed", message: error.localizedDescription, details: nil))
+          return
         }
+        result(text ?? "")
       }
     }
+  }
 
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  private func setupSecurityChannel(controller: FlutterViewController) {
+    let channel = FlutterMethodChannel(
+      name: "bureaucracy_agent/security",
+      binaryMessenger: controller.binaryMessenger
+    )
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard let strongSelf = self else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      switch call.method {
+      case "getSigningFingerprint":
+        result(strongSelf.signingFingerprint())
+      case "isDeviceCompromised":
+        result(strongSelf.isDeviceCompromised())
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private func signingFingerprint() -> String? {
+    let bundle = Bundle.main
+    let identifier = bundle.bundleIdentifier ?? ""
+    let version = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+    let data = "\(identifier)#\(version)".data(using: .utf8) ?? Data()
+    let digest = SHA256.hash(data: data)
+    return Data(digest).base64EncodedString()
+  }
+  private func isDeviceCompromised() -> Bool {
+    #if targetEnvironment(simulator)
+    return false
+    #else
+    let paths = [
+      "/Applications/Cydia.app",
+      "/Library/MobileSubstrate/MobileSubstrate.dylib",
+      "/bin/bash",
+      "/usr/sbin/sshd",
+      "/etc/apt",
+      "/private/var/lib/apt/"
+    ]
+    let isJailbroken =
+      paths.contains(where: { FileManager.default.fileExists(atPath: $0) }) ||
+      canOpen(cydia: true)
+    return isJailbroken
+    #endif
+  }
+
+  private func canOpen(cydia: Bool) -> Bool {
+    guard let url = URL(string: "cydia://package/com.example.package") else {
+      return false
+    }
+    return UIApplication.shared.canOpenURL(url)
   }
 
   private func recognizeText(in image: UIImage, completion: @escaping (String?, Error?) -> Void) {
@@ -66,7 +121,6 @@ import Vision
 
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = true
-    // Italian-first, but allow English content as well.
     request.recognitionLanguages = ["it-IT", "en-US"]
 
     DispatchQueue.global(qos: .userInitiated).async {

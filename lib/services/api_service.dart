@@ -147,3 +147,18 @@ class DocumentAnalyzerApi {
         'Request-Id': requestId,
       };
 }
+
+class ApiException implements Exception {
+  final String message;
+  final int? statusCode;
+  final String? body;
+
+  ApiException({
+    required this.message,
+    this.statusCode,
+    this.body,
+  });
+
+  @override
+  String toString() => 'ApiException($statusCode): $message';
+}

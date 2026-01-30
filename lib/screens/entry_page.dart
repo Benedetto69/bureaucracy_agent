@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+const _consentKey = 'privacy_consent_accepted';
+const _privacyPolicyUrl = 'https://privacy.benedettoriba.com/privacy.html';
+const _termsOfServiceUrl = 'https://privacy.benedettoriba.com/terms.html';
 
 const _entryFeatures = [
   'Analisi guidata su testo e metadati (OCR on-device su iOS).',
@@ -52,8 +58,129 @@ const _monetizationDetails = [
   ),
 ];
 
-class EntryPage extends StatelessWidget {
+class EntryPage extends StatefulWidget {
   const EntryPage({super.key});
+
+  @override
+  State<EntryPage> createState() => _EntryPageState();
+}
+
+class _EntryPageState extends State<EntryPage> {
+  bool _consentChecked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkConsent();
+  }
+
+  Future<void> _checkConsent() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasConsent = prefs.getBool(_consentKey) ?? false;
+    setState(() {
+      _consentChecked = true;
+    });
+    if (!hasConsent) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showConsentDialog();
+      });
+    }
+  }
+
+  Future<void> _saveConsent() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_consentKey, true);
+  }
+
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  void _showConsentDialog() {
+    showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0E1420),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => PopScope(
+        canPop: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.privacy_tip, color: Color(0xFF8BFFB7), size: 28),
+                  SizedBox(width: 12),
+                  Text(
+                    'Privacy e Termini',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Prima di utilizzare Bureaucracy Analyzer, ti chiediamo di leggere e accettare:',
+                style: TextStyle(color: Colors.white70, fontSize: 15, height: 1.5),
+              ),
+              const SizedBox(height: 16),
+              _ConsentLinkTile(
+                icon: Icons.description_outlined,
+                label: 'Termini di Servizio',
+                onTap: () => _launchUrl(_termsOfServiceUrl),
+              ),
+              const SizedBox(height: 10),
+              _ConsentLinkTile(
+                icon: Icons.shield_outlined,
+                label: 'Privacy Policy',
+                onTap: () => _launchUrl(_privacyPolicyUrl),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Continuando, confermi di aver letto e accettato i Termini di Servizio e la Privacy Policy.',
+                style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.5),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _saveConsent();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF8BFFB7),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text(
+                    'Accetto e continuo',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   void _openAnalyzer(BuildContext context) {
     Navigator.of(context).pushNamed('/analyzer');
@@ -61,6 +188,15 @@ class EntryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!_consentChecked) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF090F16),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF8BFFB7)),
+        ),
+      );
+    }
+
     final textTheme = Theme.of(context).textTheme;
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -83,7 +219,7 @@ class EntryPage extends StatelessWidget {
                     const SizedBox(height: 36),
                     SectionTitle(
                       key: const ValueKey('section_perche'),
-                      label: 'Perché usarlo',
+                      label: 'Perche usarlo',
                       textTheme: textTheme,
                     ),
                     const SizedBox(height: 12),
@@ -125,6 +261,51 @@ class EntryPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ConsentLinkTile extends StatelessWidget {
+  const _ConsentLinkTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A2332),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: const Color(0xFF8BFFB7), size: 22),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const Icon(Icons.open_in_new, color: Colors.white54, size: 18),
+          ],
+        ),
       ),
     );
   }

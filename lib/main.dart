@@ -13,15 +13,70 @@ import 'models/document_history.dart';
 import 'screens/entry_page.dart';
 import 'screens/privacy_page.dart';
 import 'screens/terms_page.dart';
+import 'security/security_service.dart';
 import 'services/api_service.dart';
-import 'services/document_analyzer_models.dart';
+import 'services/document_analyzer_models.dart' as analyzer_models;
 import 'services/history_storage.dart';
 import 'services/ocr_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/widgets.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const BureaucracyAgentApp());
+  Widget app = const BureaucracyAgentApp();
+  try {
+    await SecurityService.enforceDeviceIntegrity();
+  } on SecurityServiceException catch (error) {
+    app = SecurityBlockedApp(message: error.message);
+  } catch (error) {
+    app = const SecurityBlockedApp(
+      message: 'Impossibile completare i controlli di sicurezza.',
+    );
+  }
+  runApp(app);
+}
+
+class _GuidedStepData {
+  final String number;
+  final String title;
+  final String subtitle;
+  final bool complete;
+  final IconData icon;
+
+  const _GuidedStepData({
+    required this.number,
+    required this.title,
+    required this.subtitle,
+    required this.complete,
+    required this.icon,
+  });
+}
+
+class SecurityBlockedApp extends StatelessWidget {
+  final String message;
+
+  const SecurityBlockedApp({required this.message, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Bureaucracy – Sicurezza',
+      theme: AppTheme.build(),
+      home: Scaffold(
+        backgroundColor: const Color(0xFF0B0F16),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                'Applicazione bloccata per motivi di sicurezza:\n$message',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 18),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class BureaucracyAgentApp extends StatelessWidget {
@@ -65,8 +120,8 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   String? _errorMessage;
   bool _isLoading = false;
   bool _isGeneratingDocument = false;
-  List<AnalysisIssue> _issues = [];
-  Summary? _summary;
+  List<analyzer_models.AnalysisIssue> _issues = [];
+  analyzer_models.Summary? _summary;
   String? _serverTime;
   String? _lastPayloadId;
   File? _pickedImage;
@@ -98,14 +153,14 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     ],
   );
   static const _panelBorderColor = Color(0xFF1C2336);
-  static final List<AnalysisIssue> _offlineIssuesDemo = [
-    AnalysisIssue(
-      type: IssueType.substance,
+  static final List<analyzer_models.AnalysisIssue> _offlineIssuesDemo = [
+    analyzer_models.AnalysisIssue(
+      type: analyzer_models.IssueType.substance,
       issue: 'Le clausole della contestazione sembrano applicare interessi non previsti dal tariffario.',
       confidence: 0.86,
       references: [
-        Reference(
-          source: ReferenceSource.norma,
+        analyzer_models.Reference(
+          source: analyzer_models.ReferenceSource.norma,
           citation: 'Art. 3 Decreto 2025',
           url: Uri.parse('https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.2025'),
         ),
@@ -115,13 +170,13 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
         'Prepara richiesta formale di rettifica entro 5 giorni',
       ],
     ),
-    AnalysisIssue(
-      type: IssueType.formality,
+    analyzer_models.AnalysisIssue(
+      type: analyzer_models.IssueType.formality,
       issue: 'Manca il timbro del protocollo sul secondo foglio, necessario per la conformità.',
       confidence: 0.72,
       references: [
-        Reference(
-          source: ReferenceSource.policy,
+        analyzer_models.Reference(
+          source: analyzer_models.ReferenceSource.policy,
           citation: 'Linee guida interne 2.1.4',
           url: Uri.parse('https://intranet.bureaucracy/labs/guidelines-2.1.4'),
         ),
@@ -132,8 +187,9 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
       ],
     ),
   ];
-  static final Summary _offlineSummaryDemo = Summary(
-    riskLevel: RiskLevel.medium,
+  static final analyzer_models.Summary _offlineSummaryDemo =
+      analyzer_models.Summary(
+    riskLevel: analyzer_models.RiskLevel.medium,
     nextStep: 'Simulazione offline: pulisci i formati, allega la documentazione e invia per revisione manuale.',
   );
 
@@ -342,10 +398,10 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     });
 
     var analysisSucceeded = false;
-    final payload = AnalyzePayload(
+    final payload = analyzer_models.AnalyzePayload(
       documentId: DateTime.now().millisecondsSinceEpoch.toString(),
-      source: SourceType.ocr,
-      metadata: Metadata(
+      source: analyzer_models.SourceType.ocr,
+      metadata: analyzer_models.Metadata(
         userId: _userIdController.text.trim(),
         issueDate: _issueDate,
         amount: amount,
@@ -514,6 +570,8 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
                   formattedDate: _formattedIssueDate(),
                 ),
                 const SizedBox(height: 16),
+                _buildGuidedSteps(),
+                const SizedBox(height: 16),
                 RiskStats(issues: _issues),
                 const SizedBox(height: 18),
                 _buildPremiumPerksCard(),
@@ -570,6 +628,161 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
               foregroundColor: Colors.redAccent,
             ),
             label: const Text('Elimina dati locali'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuidedSteps() {
+    final descriptionFilled =
+        _descriptionController.text.trim().isNotEmpty ||
+        (_ocrText?.trim().isNotEmpty ?? false);
+    final metadataFilled = [
+      _userIdController.text,
+      _jurisdictionController.text,
+      _amountController.text,
+    ].every((value) => value.trim().isNotEmpty);
+    final step1Complete = descriptionFilled && metadataFilled;
+    final step2Complete = _pickedImage != null;
+    final step3Complete = _summary != null && _issues.isNotEmpty;
+    final step4Complete = _documentHistory.isNotEmpty;
+
+    final steps = [
+      _GuidedStepData(
+        number: '1',
+        title: 'Raccogli la multa',
+        subtitle: descriptionFilled
+            ? 'Hai già caricato testo o OCR'
+            : 'Scatta la foto e descrivi la violazione',
+        complete: step1Complete,
+        icon: Icons.document_scanner,
+      ),
+      _GuidedStepData(
+        number: '2',
+        title: 'Conferma le prove',
+        subtitle: _pickedImage != null
+            ? 'Foto disponibile'
+            : 'Aggiungi una prova fotografica chiara',
+        complete: step2Complete,
+        icon: Icons.photo_camera,
+      ),
+      _GuidedStepData(
+        number: '3',
+        title: 'Pianifica la strategia',
+        subtitle: _summary != null
+            ? 'Strategia generata, passa al prossimo passo'
+            : 'Lancia l’analisi per ricevere suggerimenti',
+        complete: step3Complete,
+        icon: Icons.timeline,
+      ),
+      _GuidedStepData(
+        number: '4',
+        title: 'Condividi o invia',
+        subtitle: step4Complete
+            ? 'Bozza salvata e pronta per l’invio'
+            : 'Esporta PDF o copia istruzioni',
+        complete: step4Complete,
+        icon: Icons.share,
+      ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF10141B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.timeline, color: Colors.greenAccent),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Percorso guidato',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: steps.map(_buildStepTile).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepTile(_GuidedStepData step) {
+    final statusText = step.complete ? 'Completo' : 'In sospeso';
+    return Container(
+      width: 160,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: step.complete
+              ? [Colors.greenAccent.shade100, Colors.greenAccent.shade400]
+              : [Colors.blueGrey.shade900, Colors.blueGrey.shade800],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: step.complete ? Colors.greenAccent : Colors.white10,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 12,
+                backgroundColor:
+                    step.complete ? Colors.green : Colors.blueGrey.shade700,
+                child: Text(
+                  step.number,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(step.icon, size: 18, color: Colors.white70),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            step.title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            step.subtitle,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            statusText,
+            style: TextStyle(
+              color: step.complete ? Colors.white : Colors.yellowAccent,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -1608,7 +1821,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     final issue = _issues.first;
     final documentId =
         _lastPayloadId ?? DateTime.now().millisecondsSinceEpoch.toString();
-    final request = DocumentRequest(
+    final request = analyzer_models.DocumentRequest(
       documentId: documentId,
       userId: _userIdController.text.trim(),
       issueType: issue.type,
@@ -1632,8 +1845,8 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     }
   }
 
-  Future<void> _showDocumentModal(DocumentResponse document) async {
-    final response = await showModalBottomSheet<DocumentResponse>(
+  Future<void> _showDocumentModal(analyzer_models.DocumentResponse document) async {
+    final response = await showModalBottomSheet<analyzer_models.DocumentResponse>(
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF0F1117),
