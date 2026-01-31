@@ -22,6 +22,7 @@ class DocumentAnalyzerApi {
   static const _defaultToken = 'changeme';
   static const _maxAttempts = 3;
   static const _initialBackoff = Duration(milliseconds: 300);
+  static const _httpTimeout = Duration(seconds: 30);
 
   DocumentAnalyzerApi({
     http.Client? httpClient,
@@ -121,7 +122,7 @@ class DocumentAnalyzerApi {
           uri,
           headers: headers,
           body: body,
-        );
+        ).timeout(_httpTimeout);
         if (response.statusCode >= 500 && attempt < _maxAttempts) {
           await Future.delayed(backoff);
           backoff *= 2;

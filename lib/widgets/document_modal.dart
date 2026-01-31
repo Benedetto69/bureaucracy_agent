@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../services/document_analyzer_models.dart';
+import '../services/document_export_service.dart';
 import '../services/pdf_service.dart';
 import '../services/share_service.dart';
 import 'next_steps_guide.dart';
@@ -31,6 +32,7 @@ class DocumentModal extends StatefulWidget {
 class _DocumentModalState extends State<DocumentModal> {
   bool _isLoadingPdf = false;
   bool _isLoadingShare = false;
+  bool _isLoadingTxt = false;
 
   Future<void> _handlePdfTap() async {
     if (_isLoadingPdf) return;
@@ -125,6 +127,51 @@ class _DocumentModalState extends State<DocumentModal> {
     }
   }
 
+  Future<void> _handleTxtTap() async {
+    if (_isLoadingTxt) return;
+
+    setState(() => _isLoadingTxt = true);
+
+    try {
+      debugPrint('[DocumentModal] Exporting as TXT...');
+      final result = await DocumentExportService.share(
+        title: widget.document.title,
+        body: widget.document.body,
+        format: ExportFormat.txt,
+        caseReference: widget.caseReference,
+        jurisdiction: widget.jurisdiction,
+        amount: widget.amount,
+        issueDate: widget.issueDate,
+      );
+
+      if (!result.success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.error ?? 'Errore esportazione TXT'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } else {
+        debugPrint('[DocumentModal] TXT exported successfully');
+      }
+    } catch (e, stack) {
+      debugPrint('[DocumentModal] TXT error: $e');
+      debugPrint('[DocumentModal] Stack: $stack');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore TXT: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingTxt = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final maxHeight = MediaQuery.of(context).size.height * 0.9;
@@ -215,7 +262,17 @@ class _DocumentModalState extends State<DocumentModal> {
               onTap: _handlePdfTap,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
+          Expanded(
+            child: _buildActionButton(
+              icon: _isLoadingTxt ? null : Icons.text_snippet,
+              label: 'TXT',
+              color: Colors.tealAccent,
+              isLoading: _isLoadingTxt,
+              onTap: _handleTxtTap,
+            ),
+          ),
+          const SizedBox(width: 6),
           Expanded(
             child: Builder(
               builder: (buttonContext) => _buildActionButton(
@@ -227,7 +284,7 @@ class _DocumentModalState extends State<DocumentModal> {
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Expanded(
             child: _buildActionButton(
               icon: Icons.copy,

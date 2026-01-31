@@ -22,6 +22,8 @@ dependencies:
   printing: ^5.12.0           # Preview/stampa/condividi PDF
   path_provider: ^2.1.2       # Accesso directory temporanea
   intl: ^0.19.0               # Formattazione date
+  flutter_local_notifications: ^17.2.4  # Notifiche locali scadenze
+  timezone: ^0.9.4             # Gestione fusi orari per notifiche
 
 dev_dependencies:
   flutter_test:

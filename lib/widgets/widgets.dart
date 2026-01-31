@@ -1,11 +1,16 @@
 export 'consent_dialog.dart';
+export 'deadline_banner.dart';
 export 'decision_checkpoint.dart';
 export 'disclaimer_banner.dart';
 export 'document_history_list.dart';
 export 'economic_filter.dart';
 export 'issue_card.dart';
+export 'jurisdiction_picker.dart';
 export 'next_steps_guide.dart';
+export 'post_submission_guide.dart';
 export 'quick_opinion.dart';
 export 'risk_stats.dart';
+export 'statistics_dashboard.dart';
 export 'summary_section.dart';
+export 'template_editor.dart';
 export 'verdict_card.dart';

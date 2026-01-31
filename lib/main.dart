@@ -21,6 +21,9 @@ import 'services/history_storage.dart';
 import 'services/legal_document_template.dart';
 import 'services/ocr_service.dart';
 import 'theme/app_theme.dart';
+import 'services/deadline_notification_service.dart';
+import 'services/recent_municipalities_service.dart';
+import 'services/usage_statistics_service.dart';
 import 'utils/fine_data_parser.dart';
 import 'utils/image_validator.dart';
 import 'widgets/document_modal.dart';
@@ -210,6 +213,15 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     _initializeStore();
     _initializeUsageLimits();
     _initializeConsent();
+    _initializeNotifications();
+  }
+
+  Future<void> _initializeNotifications() async {
+    try {
+      await DeadlineNotificationService.initialize();
+    } catch (error) {
+      debugPrint('Impossibile inizializzare notifiche: $error');
+    }
   }
 
   @override
@@ -525,7 +537,44 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
       });
       if (analysisSucceeded) {
         await _recordAnalysisUsage();
+        await _scheduleDeadlineNotifications();
+        await _recordStatistics();
       }
+    }
+  }
+
+  Future<void> _recordStatistics() async {
+    if (_summary == null) return;
+    final riskLevel = switch (_summary!.riskLevel) {
+      analyzer_models.RiskLevel.low => 'low',
+      analyzer_models.RiskLevel.medium => 'medium',
+      analyzer_models.RiskLevel.high => 'high',
+    };
+    final amount = double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
+    try {
+      await UsageStatisticsService.recordAnalysis(
+        id: _lastPayloadId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        jurisdiction: _jurisdictionController.text.trim(),
+        amount: amount,
+        riskLevel: riskLevel,
+        issuesCount: _issues.length,
+      );
+    } catch (error) {
+      debugPrint('Impossibile registrare statistiche: $error');
+    }
+  }
+
+  Future<void> _scheduleDeadlineNotifications() async {
+    final amount = double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
+    try {
+      await DeadlineNotificationService.scheduleDeadlineNotifications(
+        fineId: _lastPayloadId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        fineDescription: 'Multa ${_jurisdictionController.text.trim()}',
+        notificationDate: _issueDate,
+        amount: amount,
+      );
+    } catch (error) {
+      debugPrint('Impossibile programmare notifiche: $error');
     }
   }
 
@@ -580,41 +629,45 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
           _descriptionController.text = extracted;
 
           // Auto-fill fields from OCR using FineDataParser
+          // Note: Always show verification warning - OCR may extract wrong values
+          // (e.g., range minimums like "€105 - €620" → 105.00)
           if (fineData != null && fineData.hasAnyData) {
             if (fineData.fineNumber != null && fineData.fineNumber!.isNotEmpty) {
               _userIdController.text = fineData.fineNumber!;
             } else {
-              missingFields.add('Codice pratica/verbale');
+              missingFields.add('Codice pratica');
             }
+            // Always ask to verify amount - OCR might extract range minimum
             if (fineData.amount != null) {
               _amountController.text = fineData.amount!.toStringAsFixed(2);
-            } else {
-              missingFields.add('Importo');
             }
+            missingFields.add('Importo della multa');
+            // Always ask to verify date - OCR rarely extracts it correctly
             if (fineData.notificationDate != null) {
               _issueDate = fineData.notificationDate!;
-            } else {
-              missingFields.add('Data notifica');
             }
+            missingFields.add('Data notifica');
+            // Always add Giurisdizione - OCR can't reliably detect it
+            missingFields.add('Giurisdizione');
           } else {
             // No data extracted at all
-            missingFields.addAll(['Codice pratica/verbale', 'Importo', 'Data notifica']);
+            missingFields.addAll(['Codice pratica', 'Giurisdizione', 'Data notifica', 'Importo della multa']);
           }
         } else {
           _errorMessage = "Nessun testo rilevato nell'immagine.";
         }
       });
 
-      // Show warning for missing fields
+      // Show warning for fields that need verification
       if (extracted.isNotEmpty && missingFields.isNotEmpty && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Compila manualmente: ${missingFields.join(', ')}',
+              'Verifica e compila: ${missingFields.join(', ')}',
               style: const TextStyle(color: Colors.white),
             ),
             backgroundColor: Colors.orange.shade700,
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 5),
             action: SnackBarAction(
               label: 'OK',
               textColor: Colors.white,
@@ -708,9 +761,15 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
                   formattedDate: _formattedIssueDate(),
                 ),
                 const SizedBox(height: 16),
+                DeadlineBanner(notificationDate: _issueDate),
+                const SizedBox(height: 16),
                 _buildGuidedSteps(),
                 const SizedBox(height: 16),
                 RiskStats(issues: _issues),
+                const SizedBox(height: 12),
+                StatisticsMiniCard(
+                  onTap: _showStatisticsDashboard,
+                ),
                 if (_summary != null && _issues.isNotEmpty) ...[
                   const SizedBox(height: 18),
                   _buildVerdictSection(),
@@ -1255,6 +1314,16 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     );
   }
 
+  Widget _buildJurisdictionAutocomplete() {
+    return JurisdictionPicker(
+      controller: _jurisdictionController,
+      decoration: _glassDecoration('Giurisdizione', icon: Icons.location_city),
+      onSelected: (municipality) {
+        RecentMunicipalitiesService.recordUsage(municipality.name);
+      },
+    );
+  }
+
   Widget _buildMetadataInputs() {
     return Column(
       children: [
@@ -1275,11 +1344,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
         Row(
           children: [
             Expanded(
-              child: _buildGlassField(
-                label: 'Giurisdizione',
-                controller: _jurisdictionController,
-                icon: Icons.location_city,
-              ),
+              child: _buildJurisdictionAutocomplete(),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1697,22 +1762,61 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   Widget _buildDocumentActions() {
     final hasIssues = _issues.isNotEmpty;
     final ready = hasIssues && !_isGeneratingDocument;
-    return ElevatedButton.icon(
-      onPressed: ready ? _generaDocumento : null,
-      icon: _isGeneratingDocument
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
-          : const Icon(Icons.description_outlined),
-      label: const Text('Genera bozza PEC/Ricorso'),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.greenAccent,
-        foregroundColor: Colors.black,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ElevatedButton.icon(
+          onPressed: ready ? _generaDocumento : null,
+          icon: _isGeneratingDocument
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.description_outlined),
+          label: const Text('Genera bozza PEC/Ricorso'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.greenAccent,
+            foregroundColor: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _showTemplateManager,
+          icon: const Icon(Icons.edit_document, size: 18),
+          label: const Text('Gestisci template'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.amber,
+            side: const BorderSide(color: Colors.amber),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showTemplateManager() async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF0F1117),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SingleChildScrollView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(16),
+            child: const TemplateManager(),
+          ),
+        ),
       ),
     );
   }
@@ -2212,6 +2316,10 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
         }
       });
       await _persistDocumentHistory();
+      // Track document generation for statistics
+      await UsageStatisticsService.recordDocumentGenerated(
+        _lastPayloadId ?? response.documentId,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -2219,8 +2327,49 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
             duration: Duration(seconds: 2),
           ),
         );
+        // Show post-submission guide
+        await _showPostSubmissionGuide();
       }
     }
+  }
+
+  Future<void> _showPostSubmissionGuide() async {
+    final amount = double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF0F1117),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SingleChildScrollView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(16),
+            child: PostSubmissionGuide(
+              jurisdiction: _jurisdictionController.text.trim(),
+              fineNumber: _userIdController.text.trim(),
+              amount: amount,
+              notificationDate: _issueDate,
+              onComplete: () {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Ottimo! Hai completato tutti i passaggi.'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _persistDocumentHistory() async {
@@ -2258,6 +2407,30 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
 
   String _formattedIssueDate() {
     return _issueDate.toIso8601String().split('T').first;
+  }
+
+  Future<void> _showStatisticsDashboard() async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF0F1117),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SingleChildScrollView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(16),
+            child: const StatisticsDashboard(),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildVerdictSection() {

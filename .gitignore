@@ -49,5 +49,11 @@ app.*.map.json
 .env.*
 !.env.template
 
+# Android keystore
+android/key.properties
+*.jks
+*.keystore
+!android/key.properties.template
+
 # Local privacy policy repo (kept separate)
 /bureaucracy-agent-privacy/
