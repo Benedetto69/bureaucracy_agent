@@ -25,15 +25,21 @@ class PdfService {
       subject: 'Contestazione multa - $caseReference',
     );
 
-    final baseFont = await PdfGoogleFonts.nunitoRegular();
-    final boldFont = await PdfGoogleFonts.nunitoBold();
-    final italicFont = await PdfGoogleFonts.nunitoItalic();
-
-    final theme = pw.ThemeData.withFont(
-      base: baseFont,
-      bold: boldFont,
-      italic: italicFont,
-    );
+    // Load fonts with fallback
+    pw.ThemeData? theme;
+    try {
+      final baseFont = await PdfGoogleFonts.nunitoRegular();
+      final boldFont = await PdfGoogleFonts.nunitoBold();
+      final italicFont = await PdfGoogleFonts.nunitoItalic();
+      theme = pw.ThemeData.withFont(
+        base: baseFont,
+        bold: boldFont,
+        italic: italicFont,
+      );
+    } catch (_) {
+      // Use default theme if font loading fails
+      theme = null;
+    }
 
     pdf.addPage(
       pw.MultiPage(
@@ -332,6 +338,45 @@ class PdfService {
               ),
             ),
             child: pw.SizedBox(height: 40),
+          ),
+          pw.SizedBox(height: 32),
+          _buildDisclaimerSection(),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildDisclaimerSection() {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.grey100,
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+        border: pw.Border.all(color: PdfColors.grey300),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'AVVERTENZE IMPORTANTI',
+            style: pw.TextStyle(
+              fontSize: 9,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.grey700,
+            ),
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            'Questo documento e\' stato generato automaticamente a scopo indicativo e richiede verifica e personalizzazione. '
+            'Non costituisce consulenza legale professionale. '
+            'Per importi elevati o casi complessi si consiglia la consulenza di un avvocato. '
+            'Verificare i riferimenti normativi e la loro applicabilita\' al caso specifico. '
+            'La decisione finale e la responsabilita\' rimangono dell\'utente.',
+            style: const pw.TextStyle(
+              fontSize: 8,
+              color: PdfColors.grey600,
+              lineSpacing: 3,
+            ),
           ),
         ],
       ),

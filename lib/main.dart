@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -18,14 +18,16 @@ import 'security/security_service.dart';
 import 'services/api_service.dart';
 import 'services/document_analyzer_models.dart' as analyzer_models;
 import 'services/history_storage.dart';
+import 'services/legal_document_template.dart';
 import 'services/ocr_service.dart';
-import 'services/pdf_service.dart';
-import 'services/share_service.dart';
 import 'theme/app_theme.dart';
+import 'utils/fine_data_parser.dart';
 import 'utils/image_validator.dart';
+import 'widgets/document_modal.dart';
 import 'widgets/widgets.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('it_IT');
   Widget app = const BureaucracyAgentApp();
   try {
     await SecurityService.enforceDeviceIntegrity();
@@ -565,14 +567,62 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
         _errorMessage = null;
       });
       final extracted = await _runTextRecognition(file);
+
+      // Parse fine data from OCR
+      final fineData = extracted.isNotEmpty ? FineDataParser.parse(extracted) : null;
+
+      // Track which fields are missing
+      final missingFields = <String>[];
+
       setState(() {
         _ocrText = extracted;
         if (extracted.isNotEmpty) {
           _descriptionController.text = extracted;
+
+          // Auto-fill fields from OCR using FineDataParser
+          if (fineData != null && fineData.hasAnyData) {
+            if (fineData.fineNumber != null && fineData.fineNumber!.isNotEmpty) {
+              _userIdController.text = fineData.fineNumber!;
+            } else {
+              missingFields.add('Codice pratica/verbale');
+            }
+            if (fineData.amount != null) {
+              _amountController.text = fineData.amount!.toStringAsFixed(2);
+            } else {
+              missingFields.add('Importo');
+            }
+            if (fineData.notificationDate != null) {
+              _issueDate = fineData.notificationDate!;
+            } else {
+              missingFields.add('Data notifica');
+            }
+          } else {
+            // No data extracted at all
+            missingFields.addAll(['Codice pratica/verbale', 'Importo', 'Data notifica']);
+          }
         } else {
           _errorMessage = "Nessun testo rilevato nell'immagine.";
         }
       });
+
+      // Show warning for missing fields
+      if (extracted.isNotEmpty && missingFields.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Compila manualmente: ${missingFields.join(', ')}',
+              style: const TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
     } catch (error) {
       setState(() => _errorMessage = 'OCR fallita: $error');
     } finally {
@@ -2017,31 +2067,59 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
   }
 
   Future<void> _generaDocumento() async {
-    if (_issues.isEmpty || _api == null) return;
+    if (_issues.isEmpty) return;
 
     // Show decision checkpoint before generating
     final confirmed = await _showDecisionCheckpoint();
     if (!confirmed) return;
 
     setState(() => _isGeneratingDocument = true);
-    final issue = _issues.first;
-    final documentId =
-        _lastPayloadId ?? DateTime.now().millisecondsSinceEpoch.toString();
-    final request = analyzer_models.DocumentRequest(
-      documentId: documentId,
-      userId: _userIdController.text.trim(),
-      issueType: issue.type,
-      actions: issue.actions,
-      references: issue.references,
-      summaryNextStep: _summary?.nextStep ?? _esitoIA,
-    );
+
     try {
-      final document = await _api!.generateDocument(request);
+      final fineNumber = _userIdController.text.trim();
+      final amount = double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
+      final jurisdiction = _jurisdictionController.text.trim();
+      final description = _descriptionController.text.trim();
+
+      // Generate document using legal template
+      final formattedDoc = LegalDocumentTemplate.generateRicorso(
+        apiResponse: analyzer_models.DocumentResponse(
+          documentId: _lastPayloadId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+          title: 'Ricorso Multa',
+          body: '',
+          recommendations: [],
+        ),
+        senderName: '[NOME E COGNOME]',
+        senderAddress: '[INDIRIZZO COMPLETO]',
+        senderFiscalCode: '[CODICE FISCALE]',
+        senderPec: '[TUA PEC]',
+        recipientEntity: 'Comando Polizia Municipale di $jurisdiction',
+        recipientPec: '[PEC DESTINATARIO]',
+        fineNumber: fineNumber,
+        fineDate: _issueDate,
+        fineAmount: amount,
+        plateNumber: '[TARGA VEICOLO]',
+        violationDescription: description.length > 200
+            ? '${description.substring(0, 200)}...'
+            : description,
+        issues: _issues,
+        additionalNotes: _summary?.nextStep,
+      );
+
+      // Convert to DocumentResponse for the modal
+      final document = analyzer_models.DocumentResponse(
+        documentId: _lastPayloadId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        title: formattedDoc.title,
+        body: formattedDoc.body,
+        recommendations: [
+          'Compila i campi tra parentesi quadre [...] con i tuoi dati',
+          'Verifica i riferimenti normativi prima dell\'invio',
+          'Allega copia del verbale e documenti di identita\'',
+          'Invia tramite PEC o raccomandata A/R entro 60 giorni dalla notifica',
+        ],
+      );
+
       await _showDocumentModal(document);
-    } on ApiException catch (error) {
-      setState(() {
-        _errorMessage = 'Errore generazione documento: ${error.message}';
-      });
     } catch (error) {
       setState(() {
         _errorMessage = 'Impossibile generare il documento: $error';
@@ -2110,6 +2188,7 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
     final jurisdiction = _jurisdictionController.text.trim();
     final amount = double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
 
+    // Use DocumentModal StatefulWidget for proper async handling of PDF/Share
     final response = await showModalBottomSheet<analyzer_models.DocumentResponse>(
       context: context,
       isScrollControlled: true,
@@ -2117,264 +2196,13 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) {
-        final maxHeight = MediaQuery.of(context).size.height * 0.9;
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: maxHeight),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Handle bar
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.white24,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  // Header with title and date
-                  Row(
-                    children: [
-                      const Icon(Icons.description, color: Colors.greenAccent, size: 24),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              document.title,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Generato il ${DateFormat('dd/MM/yyyy HH:mm', 'it_IT').format(DateTime.now())}',
-                              style: const TextStyle(color: Colors.white54, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  // Action buttons row
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1F2E),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _buildDocumentActionButton(
-                            icon: Icons.picture_as_pdf,
-                            label: 'PDF',
-                            color: Colors.redAccent,
-                            onTap: () async {
-                              try {
-                                final pdfBytes = await PdfService.generateContestationPdf(
-                                  document: document,
-                                  caseReference: caseRef,
-                                  jurisdiction: jurisdiction,
-                                  amount: amount,
-                                  issueDate: _issueDate,
-                                );
-                                final filename = 'contestazione_${caseRef.replaceAll(RegExp(r'[^\w]'), '_')}.pdf';
-                                await PdfService.sharePdf(pdfBytes: pdfBytes, filename: filename);
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Errore PDF: $e')),
-                                  );
-                                }
-                              }
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildDocumentActionButton(
-                            icon: Icons.share,
-                            label: 'Condividi',
-                            color: Colors.blueAccent,
-                            onTap: () async {
-                              await ShareService.shareDocument(document);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildDocumentActionButton(
-                            icon: Icons.copy,
-                            label: 'Copia',
-                            color: Colors.amber,
-                            onTap: () async {
-                              final text = '${document.title}\n\n${document.body}';
-                              await Clipboard.setData(ClipboardData(text: text));
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Testo copiato negli appunti'),
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                              }
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Document body (scrollable)
-                  Flexible(
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0A0E14),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SelectableText(
-                              document.body,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                                height: 1.6,
-                              ),
-                            ),
-                            if (document.recommendations.isNotEmpty) ...[
-                              const SizedBox(height: 20),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.amber.withAlpha(20),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: Colors.amber.withAlpha(60)),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Row(
-                                      children: [
-                                        Icon(Icons.lightbulb_outline, size: 18, color: Colors.amber),
-                                        SizedBox(width: 8),
-                                        Text(
-                                          'Azioni raccomandate',
-                                          style: TextStyle(
-                                            color: Colors.amber,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10),
-                                    ...document.recommendations.asMap().entries.map(
-                                      (entry) => Padding(
-                                        padding: const EdgeInsets.only(bottom: 8),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Container(
-                                              width: 20,
-                                              height: 20,
-                                              margin: const EdgeInsets.only(right: 10),
-                                              decoration: BoxDecoration(
-                                                color: Colors.amber.withAlpha(40),
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                              child: Center(
-                                                child: Text(
-                                                  '${entry.key + 1}',
-                                                  style: const TextStyle(
-                                                    color: Colors.amber,
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            Expanded(
-                                              child: Text(
-                                                entry.value,
-                                                style: const TextStyle(
-                                                  color: Colors.white70,
-                                                  fontSize: 13,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Footer buttons
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            side: const BorderSide(color: Colors.white24),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text('Chiudi'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton.icon(
-                          onPressed: () => Navigator.of(context).pop(document),
-                          icon: const Icon(Icons.save_alt, size: 18),
-                          label: const Text('Salva nello storico'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.greenAccent,
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+      builder: (context) => DocumentModal(
+        document: document,
+        caseReference: caseRef,
+        jurisdiction: jurisdiction,
+        amount: amount,
+        issueDate: _issueDate,
+      ),
     );
     if (response != null) {
       setState(() {
@@ -2393,39 +2221,6 @@ class _SchermataRisoluzioneState extends State<SchermataRisoluzione> {
         );
       }
     }
-  }
-
-  Widget _buildDocumentActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: color.withAlpha(25),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 22),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Future<void> _persistDocumentHistory() async {

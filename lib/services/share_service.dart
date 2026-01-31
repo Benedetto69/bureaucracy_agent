@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -10,29 +11,40 @@ class ShareService {
   static Future<void> shareText({
     required String text,
     required String subject,
+    Rect? sharePositionOrigin,
   }) async {
-    await Share.share(text, subject: subject);
+    await Share.share(
+      text,
+      subject: subject,
+      sharePositionOrigin: sharePositionOrigin,
+    );
   }
 
-  static Future<void> shareDocument(DocumentResponse document) async {
+  static Future<void> shareDocument(
+    DocumentResponse document, {
+    Rect? sharePositionOrigin,
+  }) async {
     final text = _formatDocumentAsText(document);
     await Share.share(
       text,
       subject: document.title,
+      sharePositionOrigin: sharePositionOrigin,
     );
   }
 
-  static Future<void> sharePdfFile({
+  static Future<ShareResult> sharePdfFile({
     required Uint8List pdfBytes,
     required String filename,
+    Rect? sharePositionOrigin,
   }) async {
     final tempDir = await getTemporaryDirectory();
     final file = File('${tempDir.path}/$filename');
     await file.writeAsBytes(pdfBytes);
 
-    await Share.shareXFiles(
+    return await Share.shareXFiles(
       [XFile(file.path)],
       subject: filename.replaceAll('.pdf', ''),
+      sharePositionOrigin: sharePositionOrigin,
     );
   }
 

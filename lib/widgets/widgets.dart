@@ -4,6 +4,7 @@ export 'disclaimer_banner.dart';
 export 'document_history_list.dart';
 export 'economic_filter.dart';
 export 'issue_card.dart';
+export 'next_steps_guide.dart';
 export 'quick_opinion.dart';
 export 'risk_stats.dart';
 export 'summary_section.dart';
