@@ -61,6 +61,8 @@ import CryptoKit
         result(strongSelf.signingFingerprint())
       case "isDeviceCompromised":
         result(strongSelf.isDeviceCompromised())
+      case "isAppStoreOrTestFlight":
+        result(strongSelf.isAppStoreOrTestFlight())
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -91,6 +93,27 @@ import CryptoKit
       paths.contains(where: { FileManager.default.fileExists(atPath: $0) }) ||
       canOpen(cydia: true)
     return isJailbroken
+    #endif
+  }
+
+  private func isAppStoreOrTestFlight() -> Bool {
+    #if targetEnvironment(simulator)
+    return false
+    #else
+    // Check if running from TestFlight or App Store
+    // TestFlight receipts are in sandboxReceipt, App Store in StoreKit/receipt
+    if let receiptURL = Bundle.main.appStoreReceiptURL {
+      let receiptPath = receiptURL.path
+      // TestFlight uses sandboxReceipt
+      if receiptPath.contains("sandboxReceipt") {
+        return true
+      }
+      // App Store receipt exists and is not sandbox
+      if FileManager.default.fileExists(atPath: receiptPath) {
+        return true
+      }
+    }
+    return false
     #endif
   }
 
