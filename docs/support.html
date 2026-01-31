@@ -3,105 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supporto - Bureaucracy Analyzer</title>
+    <title>Supporto - Bureaucracy</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #0a0e14;
+            color: #ffffff;
             line-height: 1.6;
-            color: #e0e0e0;
-            background: #0d1117;
             padding: 20px;
-            max-width: 800px;
-            margin: 0 auto;
         }
-        h1 { color: #fff; margin-bottom: 24px; font-size: 28px; }
-        h2 { color: #8bffb7; margin: 24px 0 12px; font-size: 20px; }
-        p, li { margin-bottom: 12px; color: #b0b0b0; }
-        ul { padding-left: 24px; }
-        a { color: #8bffb7; }
-        .container { padding: 20px 0; }
-        .contact-card {
-            background: rgba(139, 255, 183, 0.1);
-            padding: 20px;
-            border-radius: 12px;
-            border-left: 3px solid #8bffb7;
-            margin: 20px 0;
-        }
-        .contact-card a {
-            font-size: 18px;
-            font-weight: 600;
-        }
-        .faq-item {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 16px;
-            border-radius: 8px;
-            margin-bottom: 12px;
-        }
-        .faq-item strong {
-            color: #fff;
-            display: block;
-            margin-bottom: 8px;
-        }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #00D9A5; margin-bottom: 0.5rem; }
+        .subtitle { color: #6B7280; font-size: 1.1rem; margin-bottom: 2rem; }
+        h2 { color: #00D9A5; margin-top: 2rem; margin-bottom: 1rem; font-size: 1.3rem; }
+        p, li { color: #B0B8C4; margin-bottom: 1rem; }
+        ul { margin-left: 1.5rem; margin-bottom: 1rem; }
+        .highlight { background: rgba(0, 217, 165, 0.1); border-left: 3px solid #00D9A5; padding: 1rem; margin: 1rem 0; }
+        a { color: #00D9A5; }
+        .back { display: inline-block; margin-top: 2rem; color: #00D9A5; text-decoration: none; }
+        .faq-item { margin-bottom: 1.5rem; }
+        .faq-q { color: #ffffff; font-weight: 600; margin-bottom: 0.5rem; }
+        .faq-a { color: #B0B8C4; }
+        .contact-box { background: rgba(0, 217, 165, 0.05); border: 1px solid rgba(0, 217, 165, 0.2); border-radius: 8px; padding: 1.5rem; margin: 2rem 0; text-align: center; }
+        .contact-box a { font-size: 1.2rem; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Supporto</h1>
-        <p>Hai bisogno di aiuto con Bureaucracy Analyzer? Siamo qui per te.</p>
-
-        <div class="contact-card">
-            <p><strong>Contattaci via email:</strong></p>
-            <a href="mailto:support@benedettoriba.com">support@benedettoriba.com</a>
-            <p style="margin-top: 12px; font-size: 14px;">Rispondiamo entro 24-48 ore lavorative.</p>
-        </div>
+        <p class="subtitle">Come possiamo aiutarti?</p>
 
         <h2>Domande Frequenti</h2>
 
         <div class="faq-item">
-            <strong>Come funziona l'analisi dei documenti?</strong>
-            <p>Inserisci una descrizione del tuo caso (es. una multa) insieme ai metadati richiesti. L'app analizza il contenuto e identifica potenziali criticita', suggerendo i prossimi passi.</p>
+            <p class="faq-q">L'app puo garantire il successo del ricorso?</p>
+            <p class="faq-a">No. L'app fornisce solo un'analisi indicativa basata su algoritmi. Le probabilita mostrate sono stime, non garanzie. Per casi importanti, consulta sempre un avvocato.</p>
         </div>
 
         <div class="faq-item">
-            <strong>I miei dati sono al sicuro?</strong>
-            <p>Si. Le immagini dei documenti restano sul tuo dispositivo (OCR on-device). Solo il testo e i metadati vengono inviati al server per l'analisi. Non usiamo tracking o pubblicita'.</p>
+            <p class="faq-q">Le mie foto vengono caricate sui vostri server?</p>
+            <p class="faq-a">No. Le immagini restano sempre sul tuo dispositivo. L'OCR viene eseguito localmente. Solo il testo estratto viene inviato per l'analisi.</p>
         </div>
 
         <div class="faq-item">
-            <strong>Come posso annullare il mio abbonamento?</strong>
-            <p>Vai su Impostazioni del tuo iPhone > [Il tuo nome] > Abbonamenti > Bureaucracy Analyzer > Annulla abbonamento. Puoi anche gestirlo tramite l'App Store.</p>
+            <p class="faq-q">Per quanto tempo conservate i miei dati?</p>
+            <p class="faq-a">I dati sui nostri server vengono cancellati automaticamente entro 24 ore. Lo storico locale sul tuo dispositivo viene conservato per massimo 90 giorni e puoi eliminarlo in qualsiasi momento.</p>
         </div>
 
         <div class="faq-item">
-            <strong>Posso richiedere un rimborso?</strong>
-            <p>I rimborsi sono gestiti direttamente da Apple. Visita <a href="https://reportaproblem.apple.com">reportaproblem.apple.com</a> per richiedere un rimborso.</p>
+            <p class="faq-q">Come annullo l'abbonamento Premium?</p>
+            <p class="faq-a">Vai in Impostazioni > [Il tuo nome] > Abbonamenti sul tuo iPhone. Trova Bureaucracy e tocca "Annulla abbonamento".</p>
         </div>
 
         <div class="faq-item">
-            <strong>Come posso eliminare i miei dati?</strong>
-            <p>Nell'app, vai su Impostazioni > Gestione dati > Elimina tutti i dati. Questo rimuovera' lo storico locale e le preferenze dal tuo dispositivo.</p>
+            <p class="faq-q">L'app funziona con tutti i tipi di multe?</p>
+            <p class="faq-a">L'app e ottimizzata per multe stradali italiane (autovelox, ZTL, parcheggio, divieto di sosta, ecc.). Altri tipi di sanzioni potrebbero non essere analizzati correttamente.</p>
         </div>
 
         <div class="faq-item">
-            <strong>L'app fornisce consulenza legale?</strong>
-            <p>No. Bureaucracy Analyzer fornisce informazioni a scopo orientativo. Non sostituisce il parere di un avvocato o professionista qualificato.</p>
+            <p class="faq-q">Come posso esportare i miei dati?</p>
+            <p class="faq-a">Nell'app, vai su Impostazioni > Privacy > Esporta i miei dati. Riceverai un file JSON con tutto lo storico.</p>
         </div>
 
-        <h2>Risorse Utili</h2>
-        <ul>
-            <li><a href="privacy.html">Privacy Policy</a></li>
-            <li><a href="terms.html">Termini di Servizio</a></li>
-        </ul>
+        <div class="faq-item">
+            <p class="faq-q">Come elimino tutti i miei dati?</p>
+            <p class="faq-a">Nell'app, vai su Impostazioni > Privacy > Elimina tutti i dati. Questa azione e irreversibile.</p>
+        </div>
 
-        <h2>Segnala un Problema</h2>
-        <p>Se riscontri bug o problemi tecnici, inviaci una email con:</p>
-        <ul>
-            <li>Descrizione del problema</li>
-            <li>Modello del dispositivo e versione iOS</li>
-            <li>Screenshot (se possibile)</li>
-        </ul>
-        <p>Email: <a href="mailto:support@benedettoriba.com">support@benedettoriba.com</a></p>
+        <h2>Non hai trovato risposta?</h2>
+
+        <div class="contact-box">
+            <p>Contattaci via email:</p>
+            <a href="mailto:privacy@benedettoriba.com">privacy@benedettoriba.com</a>
+            <p style="margin-top: 1rem; font-size: 0.9rem; color: #6B7280;">Rispondiamo entro 48 ore lavorative</p>
+        </div>
+
+        <div class="highlight">
+            <strong>Nota:</strong> Non possiamo fornire consulenza legale specifica sul tuo caso. Per domande legali, rivolgiti a un avvocato.
+        </div>
+
+        <a href="index.html" class="back">&larr; Torna alla home</a>
     </div>
 </body>
 </html>

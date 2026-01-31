@@ -3,90 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Privacy Policy - Bureaucracy Analyzer</title>
+    <title>Privacy Policy - Bureaucracy</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #0a0e14;
+            color: #ffffff;
             line-height: 1.6;
-            color: #e0e0e0;
-            background: #0d1117;
             padding: 20px;
-            max-width: 800px;
-            margin: 0 auto;
         }
-        h1 { color: #fff; margin-bottom: 24px; font-size: 28px; }
-        h2 { color: #8bffb7; margin: 24px 0 12px; font-size: 20px; }
-        p, li { margin-bottom: 12px; color: #b0b0b0; }
-        ul { padding-left: 24px; }
-        a { color: #8bffb7; }
-        .container { padding: 20px 0; }
-        .update { color: #666; font-size: 14px; margin-bottom: 24px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #00D9A5; margin-bottom: 0.5rem; }
+        .updated { color: #6B7280; font-size: 0.9rem; margin-bottom: 2rem; }
+        h2 { color: #00D9A5; margin-top: 2rem; margin-bottom: 1rem; font-size: 1.3rem; }
+        p, li { color: #B0B8C4; margin-bottom: 1rem; }
+        ul { margin-left: 1.5rem; margin-bottom: 1rem; }
+        .highlight { background: rgba(0, 217, 165, 0.1); border-left: 3px solid #00D9A5; padding: 1rem; margin: 1rem 0; }
+        a { color: #00D9A5; }
+        .back { display: inline-block; margin-top: 2rem; color: #00D9A5; text-decoration: none; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Privacy Policy</h1>
-        <p class="update">Ultimo aggiornamento: Gennaio 2025</p>
-
-        <p>Questo documento descrive come Bureaucracy Analyzer tratta i dati. Non e' consulenza legale: serve a fornire trasparenza agli utenti e a documentare le scelte tecniche del progetto.</p>
-
-        <h2>Dati trattati</h2>
-
-        <h3>Dati inseriti dall'utente</h3>
+        <p class="updated">Ultimo aggiornamento: Gennaio 2026</p>
+        <div class="highlight">
+            <strong>In breve:</strong> Processiamo solo i dati che ci dai tu, li usiamo solo per analizzare la multa, li cancelliamo entro 24 ore dai server. Non li vendiamo a nessuno.
+        </div>
+        <h2>1. Chi siamo</h2>
+        <p>Bureaucracy ("l'App") e sviluppata da Benedetto Riba. Questa Privacy Policy descrive come raccogliamo, utilizziamo e proteggiamo i tuoi dati personali.</p>
+        <h2>2. Dati che raccogliamo</h2>
+        <p><strong>Dati che ci fornisci tu:</strong></p>
         <ul>
-            <li>Testo/descrizione del caso (contenuto libero)</li>
-            <li>Metadati del caso (es. codice pratica, giurisdizione, data di notifica, importo)</li>
-            <li>Suggerimento: usa un codice pratica interno ed evita dati personali</li>
+            <li><strong>Foto della multa</strong> - Utilizzata solo per l'OCR sul tuo dispositivo. Non viene mai caricata sui nostri server.</li>
+            <li><strong>Testo della multa</strong> - Estratto dall'OCR o inserito manualmente. Inviato ai server per l'analisi.</li>
+            <li><strong>Metadati</strong> - Importo, data, giurisdizione, codice pratica.</li>
         </ul>
-
-        <h3>Dati da documento/foto</h3>
+        <p><strong>Dati tecnici:</strong></p>
         <ul>
-            <li>Se l'utente scatta o carica un'immagine, l'app puo' eseguire OCR on-device su iOS per estrarre testo</li>
-            <li>Le immagini NON vengono inviate al server: restano sul dispositivo</li>
+            <li>Identificativo dispositivo (solo per validare acquisti in-app)</li>
+            <li>Nessun tracking pubblicitario</li>
         </ul>
-
-        <h3>Dati tecnici</h3>
+        <h2>3. Come utilizziamo i dati</h2>
         <ul>
-            <li>Log tecnici del server (es. timestamp, request id, esito HTTP)</li>
-            <li>Non sono usati per marketing o advertising</li>
+            <li>Analizzare il testo della multa per identificare possibili vizi</li>
+            <li>Generare bozze di ricorso</li>
+            <li>Validare gli acquisti in-app</li>
         </ul>
-
-        <h2>Come funzionano analisi e bozze</h2>
-        <p>Per generare l'analisi e la bozza, l'app invia al server solo i dati necessari (testo e metadati del caso). Il server restituisce:</p>
+        <h2>4. Dove conserviamo i dati</h2>
         <ul>
-            <li>Riepilogo con livello di rischio e prossimo passo</li>
-            <li>Elenco di criticita' e azioni suggerite</li>
-            <li>Se richiesto, bozza di documento</li>
+            <li><strong>Sul tuo dispositivo:</strong> Storico delle bozze (puoi eliminarlo)</li>
+            <li><strong>Sui nostri server:</strong> Solo durante l'analisi, massimo 24 ore</li>
         </ul>
-
-        <h2>Conservazione (retention)</h2>
+        <div class="highlight">
+            <strong>Importante:</strong> Le immagini delle multe restano SEMPRE sul tuo dispositivo.
+        </div>
+        <h2>5. Condivisione dei dati</h2>
+        <p>Non vendiamo i tuoi dati. Possono essere condivisi solo con provider di servizi cloud (con contratti di protezione) o autorita se richiesto dalla legge.</p>
+        <h2>6. I tuoi diritti (GDPR)</h2>
         <ul>
-            <li><strong>Sul dispositivo:</strong> lo storico delle bozze e' salvato localmente nell'app fino a quando l'utente lo elimina o disinstalla l'app</li>
-            <li><strong>Sul server:</strong> i dati sono trattati per rispondere alla richiesta; eventuali log tecnici sono conservati per un periodo limitato (fino a 30 giorni)</li>
+            <li><strong>Accesso:</strong> Esporta i tuoi dati dall'app</li>
+            <li><strong>Cancellazione:</strong> Elimina i dati dall'app o contattaci</li>
+            <li><strong>Portabilita:</strong> Esporta in formato JSON</li>
         </ul>
-
-        <h2>Condivisione e terze parti</h2>
-        <ul>
-            <li>Non utilizziamo SDK di advertising o tracking cross-app</li>
-            <li>I pagamenti in-app sono gestiti da Apple tramite App Store; non riceviamo dati della carta di credito</li>
-        </ul>
-
-        <h2>Sicurezza</h2>
-        <p>In release la comunicazione con il server usa HTTPS.</p>
-
-        <h2>Controllo dell'utente</h2>
-        <p>Nell'app e' disponibile una sezione "Gestione dati" che permette di:</p>
-        <ul>
-            <li>Esportare i dati locali (copia JSON)</li>
-            <li>Eliminare i dati locali (storico e preferenze)</li>
-        </ul>
-
-        <h2>Account</h2>
-        <p>Non e' richiesto un account per usare l'app.</p>
-
-        <h2>Contatti</h2>
-        <p>Per richieste di accesso/cancellazione/portabilita' scrivi a: <a href="mailto:support@benedettoriba.com">support@benedettoriba.com</a></p>
+        <h2>7. Sicurezza</h2>
+        <p>Connessioni HTTPS cifrate, storage locale cifrato, cancellazione automatica dopo 24h, nessun log dei dati personali.</p>
+        <h2>8. Contatti</h2>
+        <p>Email: <a href="mailto:privacy@benedettoriba.com">privacy@benedettoriba.com</a></p>
+        <a href="index.html" class="back">← Torna alla home</a>
     </div>
 </body>
 </html>
